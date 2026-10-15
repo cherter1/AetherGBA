@@ -133,32 +133,14 @@ public sealed class Ppu
         int compareValue = (dispStat >> 8) & 0xFF;
         bool wasMatching = BitUtils.IsBitSet(dispStat, 2); //vcount triggered status
         bool isMatching = _memory.Io.REG_VCOUNT == compareValue; //trigger if line trigger from DISPSTAT equals vcount reg
-        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 2, isMatching); //set based on line trigger
+        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 2, isMatching); //set based on if line trigger matching
 
         if (!wasMatching &&
             isMatching &&
-            BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 5)) //trigger interrupt if vcount enabled and if vcount == trigger vlaue and wasnt already set
+            BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 5)) //trigger interrupt if vcount enabled and if vcount == trigger value and was not already set
         {
             _interrupts.Request(InterruptType.VCounter);
         }
-    }
-
-    private ushort ReadPalette16(int offset)
-    {
-        if (offset < 0 || offset + 1 >= _memory.PaletteRam.Length)
-        {
-            return 0;
-        }
-
-        return (ushort)(_memory.PaletteRam[offset] | (_memory.PaletteRam[offset + 1] << 8));
-    }
-
-    private ushort ReadBgPaletteColor(int paletteIndex)
-    {
-        var offset = paletteIndex * 2;
-        var bgr555 = ReadPalette16(offset);
-        return bgr555;
-        //return ConvertBgr555ToArgb(bgr555);
     }
 
     private void RenderScanLine(int scanLine)
@@ -191,7 +173,7 @@ public sealed class Ppu
                 break;
             default:
                 //should only be used when forceBlank bit is set in DisplayControl register
-                var backDropColor = ReadBgPaletteColor(0); //backdrop color is set by zero index of palette
+                var backDropColor = (ushort)(_memory.PaletteRam[0] | (_memory.PaletteRam[1] << 8)); //backdrop color is set by zero index of palette
                 FrameBuffer.FillScanline(scanLine, backDropColor);
                 break;
         }
@@ -279,7 +261,7 @@ public sealed class Ppu
                 }
 
                 var isSinglePalette = bgScanlineInfo[bgIdx].IsSinglePalette;
-                var paletteIndex = RenderTiledTextBackground(ref vram, x, hofsTable[bgIdx],
+                var paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
                     tileMapStartOffset: bgScanlineInfo[bgIdx].TileMapStartOffset,
                     xTiles: bgScanlineInfo[bgIdx].XTiles,
                     tileY: bgScanlineInfo[bgIdx].CurrentYTile,
@@ -322,8 +304,8 @@ public sealed class Ppu
                 }
 
                 int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(ref vram, x, loPriorityLine, displayControl, in sprite)
-                    : RenderRegularSprite(ref vram, x, loPriorityLine, in sprite);
+                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
+                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
 
                 if (objPaletteIndex == 0) continue;
 
@@ -379,7 +361,7 @@ public sealed class Ppu
         }
     }
 
-    private static int RenderAffineSprite(ref ReadOnlySpan<byte> vram, int x, int priorityLine, ushort displayControl, in ScanlineSpriteInfo sprite)
+    private static int RenderAffineSprite(in ReadOnlySpan<byte> vram, in ScanlineSpriteInfo sprite, int x, int priorityLine, ushort displayControl)
     {
         var spriteXPos = x - sprite.XCoord;
 
@@ -437,7 +419,7 @@ public sealed class Ppu
         return sourceObjPaletteIndex;
     }
 
-    private static int SampleAffineSpritePixel(ref ReadOnlySpan<byte> vram, int x, ushort displayControl, int canvasWidth, ScanlineSpriteInfo sprite)
+    private static int SampleAffineSpritePixel(in ReadOnlySpan<byte> vram, in ScanlineSpriteInfo sprite, int x, ushort displayControl, int canvasWidth)
     {
         int relativeX = x - canvasWidth / 2;
         int relativeY = sprite.RelativeY; //for now YPixelOffset is relativeY for rotational sprites
@@ -487,7 +469,7 @@ public sealed class Ppu
         return sourceObjPaletteIndex;
     }
 
-    private static int RenderRegularSprite(ref ReadOnlySpan<byte> vram, int x, int priorityLine, in ScanlineSpriteInfo sprite)
+    private static int RenderRegularSprite(in ReadOnlySpan<byte> vram, in ScanlineSpriteInfo sprite, int x, int priorityLine)
     {
         var spriteXPos = x - sprite.XCoord;
 
@@ -516,7 +498,7 @@ public sealed class Ppu
         return objPaletteIndex;
     }
 
-    private static int SampleRegularSpritePixel(ref ReadOnlySpan<byte> vram, int x, ScanlineSpriteInfo sprite)
+    private static int SampleRegularSpritePixel(in ReadOnlySpan<byte> vram, in ScanlineSpriteInfo sprite, int x)
     {
         var spriteX = x - sprite.XCoord;
 
@@ -539,7 +521,7 @@ public sealed class Ppu
         return objPaletteIndex;
     }
 
-    private static int RenderTiledTextBackground(ref ReadOnlySpan<byte> vram, int x, ushort hofs, int tileMapStartOffset,
+    private static int RenderTiledTextBackground(in ReadOnlySpan<byte> vram, int x, ushort hofs, int tileMapStartOffset,
         int xTiles, int tileY, int pixelYInTile, bool isSinglePalette, int tileDataStartOffset)
     {
         var bgXStartOffset = x + hofs;
@@ -554,7 +536,7 @@ public sealed class Ppu
 
         var tileMapIndex = tileY * 32 + tileX; //tileY * 32 + tileX
         var tileMapEntryOffset = tileMapStartOffset + tileMapIndex * 2; //tileMapStartOffset + mapIndex * mapEntrySize
-        var tileMapEntry = Read16(vram, tileMapEntryOffset);
+        var tileMapEntry = Read16(in vram, tileMapEntryOffset);
 
         var hFlip = (tileMapEntry & 0x0400) != 0;
         var vFlip = (tileMapEntry & 0x0800) != 0;
@@ -706,7 +688,7 @@ public sealed class Ppu
                 if (bgIdx == 2) //bg2 handled differently because its affine in this mode
                 {
                     //affine
-                    paletteIndex = RenderAffineTiledBackground(ref vram, ref fixedSourceX,
+                    paletteIndex = RenderAffineTiledBackground(in vram, ref fixedSourceX,
                         ref fixedSourceY, bgControls[bgIdx], (short)_memory.Io.REG_BG2PA,
                         (short)_memory.Io.REG_BG2PC, bg2Size);
                 }
@@ -714,7 +696,7 @@ public sealed class Ppu
                 {
                     //text
                     isSinglePalette = bgScanlineInfos[bgIdx].IsSinglePalette;
-                    paletteIndex = RenderTiledTextBackground(ref vram, x, hofsTable[bgIdx],
+                    paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
                         bgScanlineInfos[bgIdx].TileMapStartOffset,
                         bgScanlineInfos[bgIdx].XTiles,
                         bgScanlineInfos[bgIdx].CurrentYTile,
@@ -752,8 +734,8 @@ public sealed class Ppu
                 }
 
                 int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(ref vram, x, loPriorityLine, displayControl, in sprite)
-                    : RenderRegularSprite(ref vram, x, loPriorityLine, in sprite);
+                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
+                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
 
                 if (objPaletteIndex == 0) continue; //if transparent dont draw
 
@@ -937,7 +919,7 @@ public sealed class Ppu
 
                 //Mode 2 bgs are always 8bpp aka singlePaletteMode
                 var bgControl = bgControls[bgIdx - 2];
-                var paletteIndex = RenderAffineTiledBackground(ref vram, ref fixedSourceXTable[bgIdx - 2],
+                var paletteIndex = RenderAffineTiledBackground(in vram, ref fixedSourceXTable[bgIdx - 2],
                     ref fixedSourceYTable[bgIdx - 2], bgControl, (short)bgPaTable[bgIdx - 2],
                     (short)bgPcTable[bgIdx - 2], bgSizeTable[bgIdx - 2]);
 
@@ -972,8 +954,8 @@ public sealed class Ppu
                 }
 
                 int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(ref vram, x, loPriorityLine, displayControl, in sprite)
-                    : RenderRegularSprite(ref vram, x, loPriorityLine, in sprite);
+                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
+                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
 
                 if (objPaletteIndex == 0)
                 {
@@ -1037,7 +1019,7 @@ public sealed class Ppu
         _memory.Io.InternalBg3Y += (short)_memory.Io.REG_BG3PD;
     }
 
-    private static int RenderAffineTiledBackground(ref ReadOnlySpan<byte> vram, ref int sourceXFixed, ref int sourceYFixed, ushort bgControl, short pa, short pc, int backgroundSize)
+    private static int RenderAffineTiledBackground(in ReadOnlySpan<byte> vram, ref int sourceXFixed, ref int sourceYFixed, ushort bgControl, short pa, short pc, int backgroundSize)
     {
         int sourceX = sourceXFixed >> 8; // div 256
         int sourceY = sourceYFixed >> 8; // div 256
@@ -1077,11 +1059,11 @@ public sealed class Ppu
     private int GetScanlineVisibleSprites(int y, Span<ScanlineSpriteInfo> sprites)
     {
         int count = 0;
-        var oam = _memory.Oam.AsSpan(0, 0x400); //Explicit slice with full Length of OAM to help JIT eliminate bounds checks
+        ReadOnlySpan<byte> oam = _memory.Oam.AsSpan(0, 0x400); //Explicit slice with full Length of OAM to help JIT eliminate bounds checks
 
         for (int oamAttrOffset = 0; oamAttrOffset < 1016; oamAttrOffset += 8) //loop runs for sprites 0-127
         {
-            var attr0Value = Read16(oam, oamAttrOffset);
+            var attr0Value = Read16(in oam, oamAttrOffset);
             var attr0 = new ObjAttribute0(attr0Value);
             var isSinglePalette = attr0.IsSinglePalette; //just here for later so I remember
             if (attr0 is { IsRotationScaling: false, IsDisabled: true })
@@ -1089,16 +1071,16 @@ public sealed class Ppu
                 continue; //disabled but only if not r/s obj otherwise its IsDoubleSize
             }
 
-            var attr1Value = Read16(oam, oamAttrOffset + 2);
-            var attr2Value = Read16(oam, oamAttrOffset + 4);
+            var attr1Value = Read16(in oam, oamAttrOffset + 2);
+            var attr2Value = Read16(in oam, oamAttrOffset + 4);
             if (attr0.IsRotationScaling)
             {
                 var rotateParamGroup = (attr1Value >> 9) & 0x1f;
                 var paStartOffset = 0x6 + (rotateParamGroup * 0x20);
-                var pA = (short)Read16(oam, paStartOffset);
-                var pB = (short)Read16(oam, paStartOffset + 8);
-                var pC = (short)Read16(oam, paStartOffset + 16);
-                var pD = (short)Read16(oam, paStartOffset + 24);
+                var pA = (short)Read16(in oam, paStartOffset);
+                var pB = (short)Read16(in oam, paStartOffset + 8);
+                var pC = (short)Read16(in oam, paStartOffset + 16);
+                var pD = (short)Read16(in oam, paStartOffset + 24);
                 var doubleSized = attr0.IsDisabled;
                 var affattr1 = new ObjAttribute1(attr1Value);
 
@@ -1132,7 +1114,7 @@ public sealed class Ppu
 
                 if (attr0.ObjMode == 2) //obj window
                 {
-                    RasterizeObjWindowSprite(rotationalSprite, _memory.Io.REG_DISPCNT);
+                    RasterizeObjWindowSprite(in rotationalSprite, _memory.Io.REG_DISPCNT);
                     continue;
                 }
 
@@ -1199,7 +1181,7 @@ public sealed class Ppu
 
             if (attr0.ObjMode == 2) //obj window
             {
-                RasterizeObjWindowSprite(regSprite, _memory.Io.REG_DISPCNT);
+                RasterizeObjWindowSprite(in regSprite, _memory.Io.REG_DISPCNT);
                 continue;
             }
 
@@ -1224,12 +1206,12 @@ public sealed class Ppu
 
         int startX = Math.Max(spriteX, 0);
         int endX = Math.Min(spriteX + canvasWidth, ScreenWidth);
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan();
+        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
         for (int x = startX; x < endX; x++)
         {
             int paletteIndex = sprite.IsAffine
-                ? SampleAffineSpritePixel(ref vram, x, displayControl, canvasWidth, sprite)
-                : SampleRegularSpritePixel(ref vram, x, sprite);
+                ? SampleAffineSpritePixel(in vram, in sprite, x, displayControl, canvasWidth)
+                : SampleRegularSpritePixel(in vram, in sprite, x);
 
             if (paletteIndex != 0)
             {
@@ -1239,19 +1221,19 @@ public sealed class Ppu
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ushort Read16(ReadOnlySpan<byte> memoryRegion, int offset)
+    private static ushort Read16(in ReadOnlySpan<byte> memoryRegion, int offset)
     {
         return (ushort)((memoryRegion[offset + 1] << 8) | memoryRegion[offset]);
     }
 
     private void RenderMode3(int y)
     {
-        var vram = _memory.Vram.AsSpan();
+        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
         for (var x = 0; x < ScreenWidth; x++)
         {
             var offset = ((y * ScreenWidth) + x) * 2;
 
-            var bgr555 = Read16(vram, offset);
+            var bgr555 = Read16(in vram, offset);
             FrameBuffer.SetPixel(x, y, bgr555);
         }
     }
@@ -1262,12 +1244,15 @@ public sealed class Ppu
         var vram = useFrame1
             ? _memory.Vram.AsSpan()[0xA000..]
             : _memory.Vram.AsSpan()[..0xA000];
+        var paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
+        var pixelRowOffset = y * ScreenWidth;
         for (var x = 0; x < ScreenWidth; x++)
         {
-            var vramPixelOffset = (y * ScreenWidth) + x;
+            var vramPixelOffset = pixelRowOffset + x;
             var paletteIndex = vram[vramPixelOffset];
+            var offset = paletteIndex << 1;
 
-            var color = ReadBgPaletteColor(paletteIndex);
+            var color =  (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
 
             FrameBuffer.SetPixel(x, y, color);
         }
@@ -1275,37 +1260,32 @@ public sealed class Ppu
 
     private void RenderMode5(int y)
     {
+        var paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
         if (y > 127) //bitmap is only covering 128 scanLines
         {
-            var backDropColor = ReadBgPaletteColor(0);
+            var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
             FrameBuffer.FillScanline(y, backDropColor);
             return;
         }
 
         var useFrame1 = (_memory.Io.REG_DISPCNT & 0x10) != 0; //bit 4 of displayControl tells which bitmap to use
-        var vram = _memory.Vram.AsSpan();
+        var startOffset = !useFrame1 ? 0 : 0xA000;
+        var pixelRowOffset = y * 160;
+        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
         for (int x = 0; x < ScreenWidth; x++)
         {
             if (x > 159) //bitmap is only 160 pixels across
             {
-                var backDropColor = ReadBgPaletteColor(0);
+                var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
                 FrameBuffer.SetPixel(x, y, backDropColor);
                 continue;
             }
 
-            var startOffset = !useFrame1 ? 0 : 0xA000;
-            var offset = startOffset + (((y * 160) + x) * 2);
+            var offset = startOffset + ((pixelRowOffset + x) << 1);
 
-            var bgr555 = Read16(vram, offset);
+            var bgr555 = Read16(in vram, offset);
             FrameBuffer.SetPixel(x, y, bgr555);
         }
-    }
-
-    private ushort ReadObjPaletteColor(int paletteIndex)
-    {
-        var offset = paletteIndex * 2;
-        var bgr555 = ReadPalette16(offset + 0x200);
-        return bgr555;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

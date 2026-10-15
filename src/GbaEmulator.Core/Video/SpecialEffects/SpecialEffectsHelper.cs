@@ -4,8 +4,8 @@ public static class SpecialEffectsHelper
 {
     public static ushort AlphaBlendPixels(ushort t1Bgr555Color, ushort t2Bgr555Color, ushort blendAlphaReg)
     {
-        float coEfA = (float)(blendAlphaReg & 0x1f) / 16;
-        float coEfB = (float)((blendAlphaReg >> 8) & 0x1f) / 16;
+        float coEfA = (blendAlphaReg & 0x1f) / 16f;
+        float coEfB = ((blendAlphaReg >> 8) & 0x1f) / 16f;
 
         var t1Red = t1Bgr555Color & 0x1f;
         var t1Green = (t1Bgr555Color >> 5) & 0x1f;
@@ -25,7 +25,7 @@ public static class SpecialEffectsHelper
 
     public static ushort LightenBlend(ushort t1Bgr555Color, ushort blendYReg)
     {
-        var coEf = (float)(blendYReg & 0x1f) / 16;
+        var coEf = (blendYReg & 0x1f) / 16f;
 
         var t1Red = t1Bgr555Color & 0x1f;
         var t1Green = (t1Bgr555Color >> 5) & 0x1f;
@@ -40,7 +40,7 @@ public static class SpecialEffectsHelper
 
     public static ushort DarkenBlend(ushort t1Bgr555Color, ushort blendYReg)
     {
-        var coEf = (float)(blendYReg & 0x1f) / 16;
+        var coEf = (blendYReg & 0x1f) / 16f;
 
         var t1Red = t1Bgr555Color & 0x1f;
         var t1Green = (t1Bgr555Color >> 5) & 0x1f;

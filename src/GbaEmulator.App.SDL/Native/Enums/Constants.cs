@@ -25,4 +25,18 @@ internal static class Constants
     internal const uint SDLK_DOWN = 0x40000051u;
     internal const uint SDLK_LEFT = 0x40000050u;
     internal const uint SDLK_RIGHT = 0x4000004fu;
+
+    //may need
+    internal const uint SDLK_W = 0x00000077u;
+    //internal const uint SDLK_A = 0x00000061u;
+    //internal const uint SDLK_S = 0x00000073u;
+    internal const uint SDLK_D = 0x00000064u;
+    internal const uint SDLK_K = 0x0000006bu; //B
+    internal const uint SDLK_L = 0x0000006cu; //A
+    internal const uint SDLK_G = 0x00000067u; //Select
+    internal const uint SDLK_H = 0x00000068u; //Start
+
+    internal const uint SDLK_LCTRL = 0x400000e0u; //speed up
+    internal const uint SDLK_RCTRL = 0x400000e4u; //speed up
+    internal const uint SDLK_F = 0x00000066u; //speed up
 }

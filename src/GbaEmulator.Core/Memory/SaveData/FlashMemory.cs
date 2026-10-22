@@ -4,10 +4,13 @@ public sealed class FlashMemory
 {
     public readonly byte[] Memory = new byte[0x020000]; //FLASH1M
 
-    public FlashMemory()
+    public FlashMemory(string saveFile)
     {
+        _saveFileName = saveFile;
         Array.Fill<byte>(Memory, 0xff);
     }
+
+    private readonly string _saveFileName;
 
     //only can use 8 bit read writes
     private bool _idMode;

@@ -44,7 +44,7 @@ while (running)
             {
                 var keySetDown = *(SdlKeyboardEvent*)&sdlEvent;
 
-                /*
+                //mess with this approach to make toggle not held and not gross code
                 if (keySetDown.KeyCode == SDLK_LCTRL)
                 {
                     leftCtrlDown = true;
@@ -57,7 +57,6 @@ while (running)
                 {
                     fKeyDown = true;
                 }
-                */
 
                 if (TryMapKey(keySetDown.KeyCode, out GbaButton button))
                 {
@@ -69,7 +68,7 @@ while (running)
             {
                 var keySetUp = *(SdlKeyboardEvent*)&sdlEvent;
 
-                /*
+                //mess with this approach to make toggle not held and not gross code
                 if (keySetUp.KeyCode == SDLK_LCTRL)
                 {
                     leftCtrlDown = false;
@@ -82,7 +81,6 @@ while (running)
                 {
                     fKeyDown = false;
                 }
-                */
 
                 if (TryMapKey(keySetUp.KeyCode, out GbaButton button))
                 {
@@ -116,10 +114,10 @@ while (running)
 
     ulong currentTicksNs = SDL.SDL_GetTicksNS();
     ulong nextIntervalTicksNs = lastTicksNs + NativeFrameTicks;
-    //bool speedUpMode = fKeyDown && (rightCtrlDown || leftCtrlDown);
-    if (currentTicksNs < nextIntervalTicksNs)// && !speedUpMode)
+    bool speedUpMode = fKeyDown && (rightCtrlDown || leftCtrlDown);
+    if (currentTicksNs < nextIntervalTicksNs && !speedUpMode)
     {
-        //SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
+        SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
     }
     lastTicksNs = SDL.SDL_GetTicksNS();
 }

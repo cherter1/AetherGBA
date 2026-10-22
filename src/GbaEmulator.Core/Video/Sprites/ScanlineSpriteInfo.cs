@@ -48,7 +48,7 @@ public struct ScanlineSpriteInfo
         RelativeY = yPixelOffset;
 
         int rawX = xCoord & 0x1ff;
-        XCoord = (short)((rawX << 7) >> 7);
+        XCoord = (short)((rawX << 23) >> 23); //sign-extend 9 bit for X wrapping i.e. 508 becomes -4
 
         Priority = (byte)priority;
         Mode = (byte)mode;

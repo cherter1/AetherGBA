@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>..\..\img\GbaEmu-Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AetherGba.Core\AetherGba.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="CheckGbaFiles" BeforeTargets="Build">
+    <ItemGroup>
+      <GbaRoms Include="..\..\roms\*.gba" />
+      <GbaBios Include="..\..\bios\gba_bios.bin" />
+    </ItemGroup>
+    <Warning Condition="'@(GbaRoms)' == ''" Text="No .gba files found in the roms directory" />
+    <Error Condition="'@(GbaBios)' == ''" Text="No bios found, a file named gba_bios.bin must be added in the bios directory" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\SDL3.dll"
+          Link="SDL3.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+
+    <None Include="..\..\roms\*.gba"
+          Link="roms\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+
+    <None Include="..\..\bios\gba_bios.bin"
+          Condition="Exists('..\..\bios\gba_bios.bin')"
+          Link="bios\gba_bios.bin"
+          CopyToOutputDirectory="PreserveNewest" />
+
+    <None Include="..\..\saves\*.sav"
+          Link="saves\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

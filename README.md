@@ -1,4 +1,4 @@
-# GBA Emulator
+# Aether GBA
 
 <div align="center">
 <img width="256px" src="img/GbaEmu-Icon-256.png">

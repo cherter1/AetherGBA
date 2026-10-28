@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>..\..\img\GbaEmu-Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AetherGba.Core\AetherGba.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\roms\*.gba"
+          Link="..\..\..\..\roms\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+
+    <None Include="..\..\bios\gba_bios.bin"
+          Condition="Exists('..\..\bios\gba_bios.bin')"
+          Link="..\..\..\..\bios\gba_bios.bin"
+          CopyToOutputDirectory="PreserveNewest" />
+
+    <None Include="..\..\saves\*.sav"
+          Link="saves\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

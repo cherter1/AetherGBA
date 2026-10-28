@@ -62,7 +62,7 @@ public sealed class GbaMachine
             : null;
 
         bus.LoadCartridge(cartridge);
-        string[] saveStrings =
+        Span<string> saveStrings =
         [
             "NONSENSE_NOVALIDSAVEMATCHING_NONSENSE",
             "EEPROM_",
@@ -129,7 +129,7 @@ public sealed class GbaMachine
     public void RunFrame()
     {
         Ppu.FrameReady = false;
-        var iterations = 0;
+        //var iterations = 0;
         //var consumed = 0;
         //var cpuWatch = new Stopwatch();
         //var dmaWatch = new Stopwatch();
@@ -155,7 +155,7 @@ public sealed class GbaMachine
             //ppuWatch.Stop();
 
             //consumed += instructionCycles;
-            iterations += 1;
+            //iterations += 1;
         }
         //Console.WriteLine($"{iterations} iterations completed");
         //Console.WriteLine($"{cpuWatch.Elapsed.TotalMilliseconds} ms in CPU");

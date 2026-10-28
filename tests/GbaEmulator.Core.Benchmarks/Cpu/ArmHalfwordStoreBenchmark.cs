@@ -18,16 +18,11 @@ public class ArmHalfwordStoreBenchmark
     public Arm7Tdmi _storeCpu = null!;
     public GbaBus _storeBus = null!;
 
-    public CpuOpt _storeCpuOpt = null!;
-    public BusOpt _storeBusOpt = null!;
-
     [GlobalSetup]
     public void Setup()
     {
         (_storeCpu, _storeBus) = CpuUtilities.CreateCpu();
-        (_storeCpuOpt, _storeBusOpt) = CpuUtilities.CreateCpuOpt();
         _storeCpu.Reset();
-        _storeCpuOpt.Reset(true);
 
         byte[] rom = new byte[StepsPerInvoke * sizeof(uint)];
 
@@ -41,13 +36,8 @@ public class ArmHalfwordStoreBenchmark
 
         _storeBus.LoadCartridge(new Cartridge.Cartridge("store.gba", rom));
 
-        _storeBusOpt.LoadCartridge(new Cartridge.Cartridge("storeOpt.gba", rom));
-
         _storeCpu.Registers[3] = 0x10;
         _storeCpu.Registers[4] = 0x03000000;
-
-        _storeCpuOpt.Registers[3] = 0x10;
-        _storeCpuOpt.Registers[4] = 0x03000000;
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = StepsPerInvoke)]
@@ -59,20 +49,6 @@ public class ArmHalfwordStoreBenchmark
         for (int i = 0; i < StepsPerInvoke; i++)
         {
             totalCycles = _storeCpu.Step();
-        }
-
-        return totalCycles;
-    }
-
-    [Benchmark(OperationsPerInvoke = StepsPerInvoke)]
-    public int Opt_StepArm_Strh()
-    {
-        _storeCpuOpt.Registers.ProgramCounter = RomBase;
-        int totalCycles = 0;
-
-        for (int i = 0; i < StepsPerInvoke; i++)
-        {
-            totalCycles = _storeCpuOpt.Step();
         }
 
         return totalCycles;

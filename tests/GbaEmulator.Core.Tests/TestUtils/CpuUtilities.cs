@@ -14,13 +14,4 @@ public class CpuUtilities
         memory.Io.ConnectInterruptController(interrupts);
         return (new Arm7Tdmi(bus, interrupts), bus);
     }
-
-    public static (CpuOpt Cpu, BusOpt Bus) CreateCpuOpt()
-    {
-        var memory = new GbaMemory();
-        var interrupts = new InterruptController(memory);
-        var bus = new BusOpt(memory);
-        memory.Io.ConnectInterruptController(interrupts);
-        return (new CpuOpt(bus, interrupts), bus);
-    }
 }

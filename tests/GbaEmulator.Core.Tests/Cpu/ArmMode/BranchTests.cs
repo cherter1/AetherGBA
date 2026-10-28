@@ -40,7 +40,7 @@ public sealed class BranchTests
 
         cpu.Reset();
         cpu.Registers.ProgramCounter = 0x02000000;
-        cpu.Registers.Cpsr.ThumbState = false;
+        cpu.Registers.Cpsr.ThumbState = true;
 
         cpu.Registers[0] = 0x02000008;
 

@@ -17,16 +17,12 @@ public class ArmAluBenchmarks
 
     public Arm7Tdmi _cpu = null!;
     public GbaBus _bus = null!;
-    public CpuOpt _cpuOpt = null!;
-    public BusOpt _busOpt = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         (_cpu, _bus) = CpuUtilities.CreateCpu();
-        (_cpuOpt, _busOpt) = CpuUtilities.CreateCpuOpt();
         _cpu.Reset();
-        _cpuOpt.Reset(true);
 
         byte[] rom = new byte[StepsPerInvoke * sizeof(uint)];
 
@@ -39,15 +35,10 @@ public class ArmAluBenchmarks
         }
 
         _bus.LoadCartridge(new Cartridge.Cartridge("and.gba", rom));
-        _busOpt.LoadCartridge(new Cartridge.Cartridge("andOpt.gba", rom));
 
         _cpu.Registers[0] = 0b11;
         _cpu.Registers[1] = 0b10;
         _cpu.Registers[2] = 1;
-
-        _cpuOpt.Registers[0] = 0b11;
-        _cpuOpt.Registers[1] = 0b10;
-        _cpuOpt.Registers[2] = 1;
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = StepsPerInvoke)]
@@ -64,17 +55,4 @@ public class ArmAluBenchmarks
         return totalCycles;
     }
 
-    [Benchmark(OperationsPerInvoke = StepsPerInvoke)]
-    public int Opt_StepArm_AndWithRotate()
-    {
-        _cpuOpt.Registers.ProgramCounter = RomBase;
-        int totalCycles = 0;
-
-        for (int i = 0; i < StepsPerInvoke; i++)
-        {
-            totalCycles = _cpuOpt.Step();
-        }
-
-        return totalCycles;
-    }
 }

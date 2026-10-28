@@ -20,6 +20,10 @@ SDL.SDL_SetRenderDrawColor(renderer, 0, 128, 255, 255);
 SDL.SDL_RenderClear(renderer);
 SDL.SDL_RenderPresent(renderer);
 
+bool leftCtrlDown = false;
+bool rightCtrlDown = false;
+bool fKeyDown = false;
+
 bool running = true;
 ulong lastTime = 0, lastTicksNs = 0;
 uint fpsCount = 0;
@@ -39,6 +43,21 @@ while (running)
             if (sdlEvent.Type == SDL_EVENT_KEY_DOWN)
             {
                 var keySetDown = *(SdlKeyboardEvent*)&sdlEvent;
+
+                //mess with this approach to make toggle not held and not gross code
+                if (keySetDown.KeyCode == SDLK_LCTRL)
+                {
+                    leftCtrlDown = true;
+                }
+                else if (keySetDown.KeyCode == SDLK_RCTRL)
+                {
+                    rightCtrlDown = true;
+                }
+                else if (keySetDown.KeyCode == SDLK_F)
+                {
+                    fKeyDown = true;
+                }
+
                 if (TryMapKey(keySetDown.KeyCode, out GbaButton button))
                 {
                     Console.WriteLine($"key down: {button}");
@@ -48,6 +67,21 @@ while (running)
             else if (sdlEvent.Type == SDL_EVENT_KEY_UP)
             {
                 var keySetUp = *(SdlKeyboardEvent*)&sdlEvent;
+
+                //mess with this approach to make toggle not held and not gross code
+                if (keySetUp.KeyCode == SDLK_LCTRL)
+                {
+                    leftCtrlDown = false;
+                }
+                else if (keySetUp.KeyCode == SDLK_RCTRL)
+                {
+                    rightCtrlDown = false;
+                }
+                else if (keySetUp.KeyCode == SDLK_F)
+                {
+                    fKeyDown = false;
+                }
+
                 if (TryMapKey(keySetUp.KeyCode, out GbaButton button))
                 {
                     Console.WriteLine($"key up: {button}");
@@ -80,7 +114,8 @@ while (running)
 
     ulong currentTicksNs = SDL.SDL_GetTicksNS();
     ulong nextIntervalTicksNs = lastTicksNs + NativeFrameTicks;
-    if (currentTicksNs < nextIntervalTicksNs)
+    bool speedUpMode = fKeyDown && (rightCtrlDown || leftCtrlDown);
+    if (currentTicksNs < nextIntervalTicksNs && !speedUpMode)
     {
         SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
     }

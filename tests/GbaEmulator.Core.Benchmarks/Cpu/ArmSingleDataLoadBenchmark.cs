@@ -18,16 +18,11 @@ public class ArmSingleDataLoadBenchmark
     public Arm7Tdmi _loadCpu = null!;
     public GbaBus _loadBus = null!;
 
-    public CpuOpt _loadCpuOpt = null!;
-    public BusOpt _loadBusOpt = null!;
-
     [GlobalSetup]
     public void Setup()
     {
         (_loadCpu, _loadBus) = CpuUtilities.CreateCpu();
-        (_loadCpuOpt, _loadBusOpt) = CpuUtilities.CreateCpuOpt();
         _loadCpu.Reset();
-        _loadCpuOpt.Reset(true);
 
         byte[] rom = new byte[StepsPerInvoke * sizeof(uint)];
 
@@ -41,15 +36,9 @@ public class ArmSingleDataLoadBenchmark
 
         _loadBus.LoadCartridge(new Cartridge.Cartridge("load.gba", rom));
 
-        _loadBusOpt.LoadCartridge(new Cartridge.Cartridge("loadOpt.gba", rom));
-
         _loadCpu.Registers[0] = 0x10;
         _loadCpu.Registers[1] = 0x03000000;
         _loadCpu.Registers[2] = 0x8;
-
-        _loadCpuOpt.Registers[0] = 0x10;
-        _loadCpuOpt.Registers[1] = 0x03000000;
-        _loadCpuOpt.Registers[2] = 0x8;
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = StepsPerInvoke)]
@@ -61,20 +50,6 @@ public class ArmSingleDataLoadBenchmark
         for (int i = 0; i < StepsPerInvoke; i++)
         {
             totalCycles = _loadCpu.Step();
-        }
-
-        return totalCycles;
-    }
-
-    [Benchmark(OperationsPerInvoke = StepsPerInvoke)]
-    public int Opt_StepArm_Ldr()
-    {
-        _loadCpuOpt.Registers.ProgramCounter = RomBase;
-        int totalCycles = 0;
-
-        for (int i = 0; i < StepsPerInvoke; i++)
-        {
-            totalCycles = _loadCpuOpt.Step();
         }
 
         return totalCycles;

@@ -37,6 +37,7 @@ public sealed class PsrTransferTests
 
         cpu.Reset();
         cpu.Registers.ProgramCounter = 0x02000000;
+        cpu.Registers.Cpsr.Mode = CpuMode.Supervisor;
         cpu.Registers.SetSpsr(CpuMode.Supervisor, ProgramStatusRegister.FromUInt32(0xF00000F3));
 
         //Act

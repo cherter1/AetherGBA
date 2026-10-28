@@ -7,10 +7,6 @@ internal static unsafe partial class Sdl
 {
     private const string LibraryName = "SDL3";
 
-    internal const uint EventQuit = 0x100;
-    internal const uint EventKeyDown = 0x300;
-    internal const uint EventKeyUp = 0x301;
-
     #region SDL_init.h
 
     [LibraryImport(LibraryName)]

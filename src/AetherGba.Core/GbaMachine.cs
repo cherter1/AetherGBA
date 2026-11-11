@@ -14,7 +14,7 @@ namespace AetherGba.Core;
 public sealed class GbaMachine
 {
     private Arm7Tdmi Cpu { get; }
-    private GbaBus Bus { get; }
+    public GbaBus Bus { get; }
     private Ppu Ppu { get; }
     private TimerController Timers { get; }
     private DmaController Dma { get; }
@@ -45,7 +45,7 @@ public sealed class GbaMachine
 
     public static GbaMachine Create(GbaMachineOptions options)
     {
-        var memory = new GbaMemory();
+        var memory = new GbaMemory(options.SaveDirectory ?? string.Empty);
         var interrupts = new InterruptController(memory);
         var keypad = new KeypadState(memory, interrupts);
         var timers = new TimerController(interrupts);

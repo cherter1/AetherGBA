@@ -4,6 +4,12 @@ namespace AetherGba.Core.Memory;
 
 public sealed class GbaMemory
 {
+    public GbaMemory() { }
+    public GbaMemory(string savePath)
+    {
+        Flash = new FlashMemory(savePath);
+    }
+
     public readonly byte[] Bios = new byte[0x4000]; //16KB
     public readonly byte[] Ewram = new byte[0x40000]; //256KB
     public readonly byte[] Iwram = new byte[0x8000]; //32KB

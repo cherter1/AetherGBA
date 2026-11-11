@@ -4,7 +4,6 @@ public sealed class FlashMemory
 {
     private const uint SaveBase = 0x0e000000;
     private const int BankSize = 0x10000;
-    private const int Capacity = 0x20000;
     private const int SectorSize = 0x1000;
 
     private const int UnlockOffset1 = 0x5555;
@@ -67,7 +66,7 @@ public sealed class FlashMemory
                 break;
 
             case FlashState.Unlock1:
-                if (address == UnlockOffset2 && value == 0x55)
+                if (offset == UnlockOffset2 && value == 0x55)
                     _state = FlashState.Unlock2;
                 break;
 
@@ -144,6 +143,7 @@ public sealed class FlashMemory
         if (!_dirty)
             return;
 
+        Console.WriteLine("Flushing save");
         string? dir = Path.GetDirectoryName(_saveFileName);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
@@ -164,7 +164,7 @@ public sealed class FlashMemory
         }
 
         offset = (int)(address - 0x0e000000);
-        return false;
+        return true;
     }
 }
 

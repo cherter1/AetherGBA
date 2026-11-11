@@ -57,10 +57,14 @@ while (running)
                 {
                     fKeyDown = true;
                 }
+                else if (keySetDown.KeyCode == SDLK_H)
+                {
+                    machine.Bus.FlushSave();
+                }
 
                 if (TryMapKey(keySetDown.KeyCode, out GbaButton button))
                 {
-                    Console.WriteLine($"key down: {button}");
+                    //Console.WriteLine($"key down: {button}");
                     machine.Keypad.SetPressed(button, true);
                 }
             }
@@ -84,7 +88,7 @@ while (running)
 
                 if (TryMapKey(keySetUp.KeyCode, out GbaButton button))
                 {
-                    Console.WriteLine($"key up: {button}");
+                    //Console.WriteLine($"key up: {button}");
                     machine.Keypad.SetPressed(button, false);
                 }
             }
@@ -117,7 +121,7 @@ while (running)
     bool speedUpMode = fKeyDown && (rightCtrlDown || leftCtrlDown);
     if (currentTicksNs < nextIntervalTicksNs && !speedUpMode)
     {
-        SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
+        //SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
     }
     lastTicksNs = SDL.SDL_GetTicksNS();
 }

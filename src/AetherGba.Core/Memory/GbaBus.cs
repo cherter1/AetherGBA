@@ -15,6 +15,11 @@ public sealed class GbaBus(GbaMemory memory)
         }
     }
 
+    public void FlushSave()
+    {
+        memory.Flash.FlushSave();
+    }
+
     public void LoadCartridge(GbaCartridge? cartridge) => memory.Rom = cartridge?.RomData ?? [];
 
     public uint Read32(uint address)

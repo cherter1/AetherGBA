@@ -307,14 +307,19 @@ public sealed class IoRegisters
                 if ((value & 0x8000) != 0)
                 {
                     _dma.Channels[0].Enable();
+                    if ((value & 0x3000) == 0)
+                    {
+                        _dma.PendImmMask |= 0b0001;
+                    }
+                    else
+                    {
+                        _dma.PendImmMask &= 0b1110;
+                    }
                 }
                 else
                 {
                     _dma.Channels[0].Enabled = false;
-                }
-                if ((value & 0x8000) != 0)
-                {
-                    //RunDmas(DmaTimingType.Immediately, bus);
+                    _dma.PendImmMask &= 0b1110;
                 }
                 break;
             case 0x040000BC:
@@ -337,14 +342,19 @@ public sealed class IoRegisters
                 if ((value & 0x8000) != 0)
                 {
                     _dma.Channels[1].Enable();
+                    if ((value & 0x3000) == 0)
+                    {
+                        _dma.PendImmMask |= 0b0010;
+                    }
+                    else
+                    {
+                        _dma.PendImmMask &= 0b1101;
+                    }
                 }
                 else
                 {
                     _dma.Channels[1].Enabled = false;
-                }
-                if ((value & 0x8000) != 0)
-                {
-                    //RunDmas(DmaTimingType.Immediately, bus);
+                    _dma.PendImmMask &= 0b1101;
                 }
                 break;
             case 0x040000C8:
@@ -367,14 +377,19 @@ public sealed class IoRegisters
                 if ((value & 0x8000) != 0)
                 {
                     _dma.Channels[2].Enable();
+                    if ((value & 0x3000) == 0)
+                    {
+                        _dma.PendImmMask |= 0b0100;
+                    }
+                    else
+                    {
+                        _dma.PendImmMask &= 0b1011;
+                    }
                 }
                 else
                 {
                     _dma.Channels[2].Enabled = false;
-                }
-                if ((value & 0x8000) != 0)
-                {
-                    //RunDmas(DmaTimingType.Immediately, bus);
+                    _dma.PendImmMask &= 0b1011;
                 }
                 break;
             case 0x040000D4:
@@ -397,14 +412,19 @@ public sealed class IoRegisters
                 if ((value & 0x8000) != 0)
                 {
                     _dma.Channels[3].Enable();
+                    if ((value & 0x3000) == 0)
+                    {
+                        _dma.PendImmMask |= 0b1000;
+                    }
+                    else
+                    {
+                        _dma.PendImmMask &= 0b0111;
+                    }
                 }
                 else
                 {
                     _dma.Channels[3].Enabled = false;
-                }
-                if ((value & 0x8000) != 0)
-                {
-                    //RunDmas(DmaTimingType.Immediately, bus);
+                    _dma.PendImmMask &= 0b0111;
                 }
                 break;
             #endregion

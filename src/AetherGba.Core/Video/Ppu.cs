@@ -145,10 +145,13 @@ public sealed class Ppu
 
     private void RenderScanLine(int scanLine)
     {
+        //return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
         if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
         {
-            modeBits = 0xff;
+            var paletteRam = _memory.PaletteRam.AsSpan(0, 2);
+            var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8)); //backdrop color is set by zero index of palette
+            FrameBuffer.FillScanline(scanLine, backDropColor);
         }
 
         switch (modeBits)
@@ -170,11 +173,6 @@ public sealed class Ppu
                 break;
             case 5: //bitmap based mode
                 RenderMode5(scanLine);
-                break;
-            default:
-                //should only be used when forceBlank bit is set in DisplayControl register
-                var backDropColor = (ushort)(_memory.PaletteRam[0] | (_memory.PaletteRam[1] << 8)); //backdrop color is set by zero index of palette
-                FrameBuffer.FillScanline(scanLine, backDropColor);
                 break;
         }
     }

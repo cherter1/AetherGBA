@@ -143,7 +143,7 @@ public sealed class GbaMachine
             //cpuWatch.Stop();
 
             //dmaWatch.Start();
-            Dma.RunDmas(DmaTimingType.Immediately, Bus);
+            if (Dma.HasPendingImmediate) Dma.RunImmediateDma(Bus);
             //dmaWatch.Stop();
 
             //timerWatch.Start();

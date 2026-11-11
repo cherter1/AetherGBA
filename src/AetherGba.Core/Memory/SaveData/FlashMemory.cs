@@ -31,11 +31,6 @@ public sealed class FlashMemory
         Array.Copy(saveData, Memory, Math.Min(saveData.Length, Memory.Length));
     }
 
-    ~FlashMemory()
-    {
-        FlushSave(); //maybe unreliable maybe change when file flush happens
-    }
-
     public byte Read8(uint address)
     {
         if (!TryGetOffset(address, out var offset))

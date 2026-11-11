@@ -1,4 +1,5 @@
-﻿using AetherGba.App.SDL.Hosting;
+﻿using System.Diagnostics;
+using AetherGba.App.SDL.Hosting;
 using AetherGba.App.SDL.Native.Structs;
 using AetherGba.Core.Input;
 using SDL = AetherGba.App.SDL.Native.Sdl;
@@ -96,6 +97,7 @@ while (running)
 
         machine.RunFrame();
 
+        
         fixed (ushort* pixels = machine.FrameBuffer.Pixels)
         {
             SDL.SDL_UpdateTexture(texture, null, pixels, 240 * 2);
@@ -104,6 +106,7 @@ while (running)
         SDL.SDL_RenderClear(renderer);
         SDL.SDL_RenderTexture(renderer, texture, null, null);
         SDL.SDL_RenderPresent(renderer);
+        
     }
 
     fpsCount++;

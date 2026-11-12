@@ -25,6 +25,7 @@ bool leftCtrlDown = false;
 bool rightCtrlDown = false;
 bool fKeyDown = false;
 
+List<uint> fpsCounts = [];
 bool running = true;
 ulong lastTime = 0, lastTicksNs = 0;
 uint fpsCount = 0;
@@ -114,6 +115,7 @@ while (running)
     ulong currentTime = SDL.SDL_GetTicks();
     if (currentTime > lastTime + 1000)
     {
+        fpsCounts.Add(fpsCount);
         SDL.SDL_SetWindowTitle(window, $"FPS Test ({fpsCount} fps)");
         fpsCount = 0;
         lastTime = currentTime;
@@ -127,6 +129,15 @@ while (running)
         //SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
     }
     lastTicksNs = SDL.SDL_GetTicksNS();
+
+    if (SDL.SDL_GetTicks() >= 32_000)
+    {
+        uint totals = fpsCounts[2..].Aggregate<uint, uint>(0, (bitscurrent, entry) => bitscurrent + entry);
+
+        var average = totals / (float)(fpsCounts.Count - 2);
+        Console.WriteLine($"Average FPS: {average}");
+        break;
+    }
 }
 
 SDL.SDL_DestroyTexture(texture);

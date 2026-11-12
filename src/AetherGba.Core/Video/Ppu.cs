@@ -31,13 +31,29 @@ public sealed class Ppu
 
     public FrameBuffer FrameBuffer { get; }
 
-    private int _scanlineCycle;
+    //private int _scanlineCycle;
+    private int _cyclesUntilBoundary;
+    private bool _inHBlank;
 
     public void Step(int cycles, GbaBus bus)
     {
-        while (cycles > 0)
+        while (cycles >= _cyclesUntilBoundary)
         {
+            cycles -= _cyclesUntilBoundary;
+            if (_inHBlank)
+            {
+                _inHBlank = false;
+                _cyclesUntilBoundary = HBlankStartCycle;
+                EndScanline(bus);
+            }
+            else
+            {
+                _inHBlank = true;
+                _cyclesUntilBoundary = CyclesPerScanline - HBlankStartCycle;
+                EnterHBlank(bus);
+            }
             //if is in HBlank then cycle boundary is start of next scanline otherwise its in the start of HBlank
+            /*
             int nextBoundary = _scanlineCycle >= HBlankStartCycle ? CyclesPerScanline : HBlankStartCycle;
             int cyclesUntilBoundary = nextBoundary - _scanlineCycle;
             int consumed = Math.Min(cycles, cyclesUntilBoundary);
@@ -58,7 +74,10 @@ public sealed class Ppu
             {
                 EndScanline(bus); // leave hblank, update vcount, enter vblank when appropriate
             }
+            */
         }
+
+        _cyclesUntilBoundary -= cycles;
     }
 
     private void EnterHBlank(GbaBus bus)
@@ -70,7 +89,7 @@ public sealed class Ppu
             _dma.RunDmas(DmaTimingType.Hblank, bus);
         }
 
-        if (BitUtils.IsBitSet(_memory.Io.REG_VCOUNT, 4)) // hlbank irq enabled
+        if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
         {
             _interrupts.Request(InterruptType.HBlank);
         }
@@ -86,7 +105,7 @@ public sealed class Ppu
     {
         _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, false); // leave hblank unset bit
 
-        _scanlineCycle = 0;
+        //_scanlineCycle = 0;
 
         int nextLine = _memory.Io.REG_VCOUNT + 1;
 
@@ -133,7 +152,7 @@ public sealed class Ppu
         int compareValue = (dispStat >> 8) & 0xFF;
         bool wasMatching = BitUtils.IsBitSet(dispStat, 2); //vcount triggered status
         bool isMatching = _memory.Io.REG_VCOUNT == compareValue; //trigger if line trigger from DISPSTAT equals vcount reg
-        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 2, isMatching); //set based on if line trigger matching
+        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(dispStat, 2, isMatching); //set based on if line trigger matching
 
         if (!wasMatching &&
             isMatching &&

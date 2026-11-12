@@ -35,8 +35,8 @@ public partial class MainWindow
 
         _machine = startup.Machine;
 
-        var width = _machine.FrameBuffer.Width;
-        var height = _machine.FrameBuffer.Height;
+        var width = 240;//_machine.FrameBuffer.Width;
+        var height = 160;//_machine.FrameBuffer.Height;
 
         _stride = width * 4;
         _frameRect = new Int32Rect(0, 0, width, height);
@@ -80,10 +80,10 @@ public partial class MainWindow
         {
             _machine.RunFrame();
 
-            int count = _machine.FrameBuffer.Width * _machine.FrameBuffer.Height;
+            int count = 240 * 160;//_machine.FrameBuffer.Width * _machine.FrameBuffer.Height;
             for (int i = 0; i < count; i++)
             {
-                ushort p = _machine.FrameBuffer.Pixels[i];
+                ushort p = 1;//_machine.FrameBuffer.Pixels[i];
                 _backPixels[i * 4] = Expand5To8[(p >> 10) & 0x1f]; //b
                 _backPixels[i * 4 + 1] = Expand5To8[(p >> 5) & 0x1f]; //g
                 _backPixels[i * 4 + 2] = Expand5To8[p & 0x1f]; //r

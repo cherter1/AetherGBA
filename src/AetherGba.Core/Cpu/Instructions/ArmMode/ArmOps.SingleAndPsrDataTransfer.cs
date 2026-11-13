@@ -1,8 +1,8 @@
 using AetherGba.Core.Memory;
 
-namespace AetherGba.Core.Cpu;
+namespace AetherGba.Core.Cpu.Instructions.ArmMode;
 
-public sealed partial class Arm7Tdmi
+public static partial class ArmOps
 {
     /* SINGLE DATA AND PSR TRANSFER INSTRUCTION ENCODINGS
 
@@ -15,7 +15,7 @@ public sealed partial class Arm7Tdmi
       |_Cond__|0_0|I|1_0|P|1_0|F|0_0|C|1_1_1_1|_Shift_|___Immediate___| MSR imm
      */
 
-    private void Str(uint instruction)
+    public static void Str(Arm7Tdmi cpu, uint instruction)
     {
         var isOffsetImmediate = (instruction & 0x02000000) == 0;
         var preIndex = (instruction & 0x1000000) != 0; //bit 24
@@ -27,43 +27,43 @@ public sealed partial class Arm7Tdmi
         var destinationRegister = (int)(instruction >> 12) & 0xF;
         var offset = isOffsetImmediate
             ? instruction & 0xFFF
-            : ComputeShiftedRegisterOperand(instruction, out _);
+            : cpu.ComputeShiftedRegisterOperand(instruction, out _);
 
         var address = baseRegister == 15
-            ? Registers[baseRegister] + 4
-            : Registers[baseRegister];
+            ? cpu.Registers[baseRegister] + 4
+            : cpu.Registers[baseRegister];
         var effectiveAddress = preIndex
             ? addOffset ? address + offset : address - offset
             : address;
 
         var writeValue = destinationRegister == 15
-            ? Registers[destinationRegister] + 8
-            : Registers[destinationRegister];
+            ? cpu.Registers[destinationRegister] + 8
+            : cpu.Registers[destinationRegister];
 
         if (byteTransfer)
         {
-            _bus.Write8(effectiveAddress, (byte)writeValue); //STRB
-            _cycles += _bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Byte, sequential: false); //N cycle
+            cpu.Bus.Write8(effectiveAddress, (byte)writeValue); //STRB
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Byte, sequential: false); //N cycle
         }
         else
         {
-            _bus.Write32(effectiveAddress, writeValue); //STR
-            _cycles += _bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Word, sequential: false); //N cycle
+            cpu.Bus.Write32(effectiveAddress, writeValue); //STR
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Word, sequential: false); //N cycle
         }
 
         if (!preIndex)
         {
-            Registers[baseRegister] = addOffset ? address + offset : address - offset;
+            cpu.Registers[baseRegister] = addOffset ? address + offset : address - offset;
         }
         else if (writeback)
         {
-            Registers[baseRegister] = effectiveAddress;
+            cpu.Registers[baseRegister] = effectiveAddress;
         }
 
-        _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: false); //STR N
+        cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: false); //STR N
     }
 
-    private void Ldr(uint instruction)
+    public static void Ldr(Arm7Tdmi cpu, uint instruction)
     {
         var isOffsetImmediate = (instruction & 0x02000000) == 0;
         var preIndex = (instruction & 0x1000000) != 0; //bit 24
@@ -75,11 +75,11 @@ public sealed partial class Arm7Tdmi
         var destinationRegister = (int)(instruction >> 12) & 0xF;
         var offset = isOffsetImmediate
             ? instruction & 0xFFF
-            : ComputeShiftedRegisterOperand(instruction, out _);
+            : cpu.ComputeShiftedRegisterOperand(instruction, out _);
 
         var address = baseRegister == 15
-            ? Registers[baseRegister] + 4
-            : Registers[baseRegister];
+            ? cpu.Registers[baseRegister] + 4
+            : cpu.Registers[baseRegister];
         var effectiveAddress = preIndex
             ? addOffset ? address + offset : address - offset
             : address;
@@ -88,61 +88,61 @@ public sealed partial class Arm7Tdmi
 
         if (byteTransfer)
         {
-            loadedWord = _bus.Read8(effectiveAddress); //LDRB
-            _cycles += _bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Byte, sequential: false); //N cycle
+            loadedWord = cpu.Bus.Read8(effectiveAddress); //LDRB
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Byte, sequential: false); //N cycle
         }
         else
         {
-            loadedWord = _bus.Read32(effectiveAddress); //LDR
-            _cycles += _bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Word, sequential: false); //N cycle
+            loadedWord = cpu.Bus.Read32(effectiveAddress); //LDR
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(effectiveAddress, AccessWidth.Word, sequential: false); //N cycle
         }
 
         if (!preIndex)
         {
-            Registers[baseRegister] = addOffset
+            cpu.Registers[baseRegister] = addOffset
                 ? address + offset
                 : address - offset;
         }
         else if (writeback)
         {
-            Registers[baseRegister] = effectiveAddress;
+            cpu.Registers[baseRegister] = effectiveAddress;
         }
 
-        Registers[destinationRegister] = loadedWord;
+        cpu.Registers[destinationRegister] = loadedWord;
 
-        _cycles++; //1I
+        cpu.Cycles++; //1I
         if (destinationRegister == 15)
         {
             //if LDR PC add another 1S and 1N for pipeline refill
-            _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: false);
-            _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true) * 2;
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: false);
+            cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: true) * 2;
             return;
         }
 
-        _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true); //LDR S
+        cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: true); //LDR S
     }
 
-    private void Mrs(uint instruction)
+    public static void Mrs(Arm7Tdmi cpu, uint instruction)
     {
         var useSpsr = (instruction & 0x00400000) != 0; //bit 22
         var rd = (int)(instruction >> 12) & 0xF;
-        var statusReg = useSpsr ? Registers.GetSpsr().ToUInt32() : Registers.Cpsr.ToUInt32();
+        var statusReg = useSpsr ? cpu.Registers.GetSpsr().ToUInt32() : cpu.Registers.Cpsr.ToUInt32();
 
-        Registers[rd] = statusReg;
+        cpu.Registers[rd] = statusReg;
 
         //1S cycle
-        _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true);
+        cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: true);
     }
 
-    private void Msr(uint instruction)
+    public static void Msr(Arm7Tdmi cpu, uint instruction)
     {
         var useSpsr = (instruction & 0x00400000) != 0; //bit 22
         var flagBit = (instruction & 0x00080000) != 0; //bit 19
         var controlBit = (instruction & 0x10000) != 0; //bit 16
         var rm = (int)instruction & 0xf;
 
-        var source = Registers[rm];
-        var oldPsr = useSpsr ? Registers.GetSpsr().ToUInt32() : Registers.Cpsr.ToUInt32();
+        var source = cpu.Registers[rm];
+        var oldPsr = useSpsr ? cpu.Registers.GetSpsr().ToUInt32() : cpu.Registers.Cpsr.ToUInt32();
 
         uint newPsr = flagBit switch
         {
@@ -155,26 +155,26 @@ public sealed partial class Arm7Tdmi
         var status = ProgramStatusRegister.FromUInt32(newPsr);
         if (useSpsr)
         {
-            Registers.SetSpsr(Registers.Cpsr.Mode, status);
+            cpu.Registers.SetSpsr(cpu.Registers.Cpsr.Mode, status);
         }
         else
         {
             //TODO: Mode
-            Registers.Cpsr = status;
+            cpu.Registers.Cpsr = status;
         }
 
         //1S cycle
-        _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true);
+        cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: true);
     }
 
-    private void MsrImm(uint instruction)
+    public static void MsrImm(Arm7Tdmi cpu, uint instruction)
     {
         var useSpsr = (instruction & 0x00400000) != 0; //bit 22
         var flagBit = (instruction & 0x00080000) != 0; //bit 19
         var controlBit = (instruction & 0x10000) != 0; //bit 16
 
-        var source = DecodeImmediateOperand(instruction, out _);
-        var oldPsr = useSpsr ? Registers.GetSpsr().ToUInt32() : Registers.Cpsr.ToUInt32();
+        var source = cpu.DecodeImmediateOperand(instruction, out _);
+        var oldPsr = useSpsr ? cpu.Registers.GetSpsr().ToUInt32() : cpu.Registers.Cpsr.ToUInt32();
 
         uint newPsr = flagBit switch
         {
@@ -187,15 +187,15 @@ public sealed partial class Arm7Tdmi
         var status = ProgramStatusRegister.FromUInt32(newPsr);
         if (useSpsr)
         {
-            Registers.SetSpsr(Registers.Cpsr.Mode, status);
+            cpu.Registers.SetSpsr(cpu.Registers.Cpsr.Mode, status);
         }
         else
         {
             //TODO: Mode
-            Registers.Cpsr = status;
+            cpu.Registers.Cpsr = status;
         }
 
         //1S cycle
-        _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true);
+        cpu.Cycles += cpu.Bus.GetCpuAccessCycles(cpu.Registers.ProgramCounter, AccessWidth.Word, sequential: true);
     }
 }

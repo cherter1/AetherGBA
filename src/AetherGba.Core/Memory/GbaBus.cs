@@ -15,6 +15,11 @@ public sealed class GbaBus(GbaMemory memory)
         }
     }
 
+    public void FlushSave()
+    {
+        memory.Flash.FlushSave();
+    }
+
     public void LoadCartridge(GbaCartridge? cartridge) => memory.Rom = cartridge?.RomData ?? [];
 
     public uint Read32(uint address)
@@ -119,31 +124,36 @@ public sealed class GbaBus(GbaMemory memory)
         switch (address >> 24)
         {
             case 0x00:
-                offset = (int)(address % (uint)memory.Bios.Length);
-                buffer = memory.Bios.AsSpan()[offset..(offset + size)];
+                offset = (int)(address & 0x3fffu); //fixed pow 2 size 16 KiB
+                //offset = (int)(address % (uint)memory.Bios.Length);
+                buffer = memory.Bios.AsSpan(offset, size);
                 return MemoryRegion.Bios;
             case 0x02:
-                offset = (int)((address - 0x02000000) % (uint)memory.Ewram.Length);
-                buffer = memory.Ewram.AsSpan()[offset..(offset + size)];
+                offset = (int)(address & 0x3ffffu); //fixed pow 2 size 256 KiB
+                //offset = (int)((address - 0x02000000) % (uint)memory.Ewram.Length);
+                buffer = memory.Ewram.AsSpan(offset, size);
                 return MemoryRegion.Ewram;
             case 0x03:
-                offset = (int)((address - 0x03000000) % (uint)memory.Iwram.Length);
-                buffer = memory.Iwram.AsSpan()[offset..(offset + size)];
+                offset = (int)(address & 0x7fffu); //fixed pow 2 size 16 KiB
+                //offset = (int)((address - 0x03000000) % (uint)memory.Iwram.Length);
+                buffer = memory.Iwram.AsSpan(offset, size);
                 return MemoryRegion.Iwram;
             case 0x04:
                 buffer = [];
                 return MemoryRegion.Io;
             case 0x05:
-                offset = (int)((address - 0x05000000) % (uint)memory.PaletteRam.Length);
-                buffer = memory.PaletteRam.AsSpan()[offset..(offset + size)];
+                offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
+                //offset = (int)((address - 0x05000000) % (uint)memory.PaletteRam.Length);
+                buffer = memory.PaletteRam.AsSpan(offset, size);
                 return MemoryRegion.PaletteRam;
             case 0x06:
                 offset = (int)((address - 0x06000000) % (uint)memory.Vram.Length);
-                buffer = memory.Vram.AsSpan()[offset..(offset + size)];
+                buffer = memory.Vram.AsSpan(offset, size);
                 return MemoryRegion.Vram;
             case 0x07:
-                offset = (int)((address - 0x07000000) % (uint)memory.Oam.Length);
-                buffer = memory.Oam.AsSpan()[offset..(offset + size)];
+                offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
+                //offset = (int)((address - 0x07000000) % (uint)memory.Oam.Length);
+                buffer = memory.Oam.AsSpan(offset, size);
                 return MemoryRegion.Oam;
             case 0x08:
             case 0x09:
@@ -151,12 +161,22 @@ public sealed class GbaBus(GbaMemory memory)
             case 0x0B:
             case 0x0C:
             case 0x0D:
-                offset = memory.Rom.Length == 0 ? 0 : (int)((address - 0x08000000) % (uint)memory.Rom.Length);
-                buffer = memory.Rom.AsSpan()[offset..(offset + size)];
+                
+                uint romLen = (uint)memory.Rom.Length;
+                uint roffset = address - 0x08000000u;
+                if (roffset >= romLen)
+                {
+                    roffset = romLen == 0 ? 0 : roffset % romLen;
+                }
+                offset = (int)roffset;
+                
+
+                //offset = memory.Rom.Length == 0 ? 0 : (int)((address - 0x08000000) % (uint)memory.Rom.Length);
+                buffer = memory.Rom.AsSpan(offset, size);
                 return MemoryRegion.Rom;
             case 0x0E:
                 offset = (int)((address - 0x0E000000) % (uint)memory.Sram.Length);
-                buffer = memory.Sram.AsSpan()[offset..(offset + size)];
+                buffer = memory.Sram.AsSpan(offset, size);
                 return MemoryRegion.Sram;
             default:
                 buffer = [];

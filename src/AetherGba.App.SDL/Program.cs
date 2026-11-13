@@ -1,4 +1,5 @@
-﻿using AetherGba.App.SDL.Hosting;
+﻿using System.Diagnostics;
+using AetherGba.App.SDL.Hosting;
 using AetherGba.App.SDL.Native.Structs;
 using AetherGba.Core.Input;
 using SDL = AetherGba.App.SDL.Native.Sdl;
@@ -24,6 +25,7 @@ bool leftCtrlDown = false;
 bool rightCtrlDown = false;
 bool fKeyDown = false;
 
+List<uint> fpsCounts = [];
 bool running = true;
 ulong lastTime = 0, lastTicksNs = 0;
 uint fpsCount = 0;
@@ -57,10 +59,14 @@ while (running)
                 {
                     fKeyDown = true;
                 }
+                else if (keySetDown.KeyCode == SDLK_H)
+                {
+                    machine.Bus.FlushSave();
+                }
 
                 if (TryMapKey(keySetDown.KeyCode, out GbaButton button))
                 {
-                    Console.WriteLine($"key down: {button}");
+                    //Console.WriteLine($"key down: {button}");
                     machine.Keypad.SetPressed(button, true);
                 }
             }
@@ -84,7 +90,7 @@ while (running)
 
                 if (TryMapKey(keySetUp.KeyCode, out GbaButton button))
                 {
-                    Console.WriteLine($"key up: {button}");
+                    //Console.WriteLine($"key up: {button}");
                     machine.Keypad.SetPressed(button, false);
                 }
             }
@@ -92,14 +98,19 @@ while (running)
 
         machine.RunFrame();
 
+        /*
         fixed (ushort* pixels = machine.FrameBuffer.Pixels)
         {
             SDL.SDL_UpdateTexture(texture, null, pixels, 240 * 2);
         }
+        */
+        
+        SDL.SDL_UpdateTexture(texture, null, machine.FrameBuffer._pix, 240 * 2);
 
         SDL.SDL_RenderClear(renderer);
         SDL.SDL_RenderTexture(renderer, texture, null, null);
         SDL.SDL_RenderPresent(renderer);
+        
     }
 
     fpsCount++;
@@ -107,6 +118,7 @@ while (running)
     ulong currentTime = SDL.SDL_GetTicks();
     if (currentTime > lastTime + 1000)
     {
+        fpsCounts.Add(fpsCount);
         SDL.SDL_SetWindowTitle(window, $"FPS Test ({fpsCount} fps)");
         fpsCount = 0;
         lastTime = currentTime;
@@ -117,9 +129,18 @@ while (running)
     bool speedUpMode = fKeyDown && (rightCtrlDown || leftCtrlDown);
     if (currentTicksNs < nextIntervalTicksNs && !speedUpMode)
     {
-        SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
+        //SDL.SDL_DelayNS(nextIntervalTicksNs - currentTicksNs);
     }
     lastTicksNs = SDL.SDL_GetTicksNS();
+
+    if (SDL.SDL_GetTicks() >= 32_000)
+    {
+        uint totals = fpsCounts[2..].Aggregate<uint, uint>(0, (bitscurrent, entry) => bitscurrent + entry);
+
+        var average = totals / (float)(fpsCounts.Count - 2);
+        Console.WriteLine($"Average FPS: {average}");
+        break;
+    }
 }
 
 SDL.SDL_DestroyTexture(texture);

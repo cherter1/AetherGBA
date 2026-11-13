@@ -3,29 +3,29 @@ using System.Runtime.CompilerServices;
 using AetherGba.Core.Common;
 using AetherGba.Core.Interrupts;
 using AetherGba.Core.Memory;
+using AetherGba.Core.Cpu.Instructions.ThumbMode;
+using AetherGba.Core.Cpu.Instructions.ArmMode;
 
 namespace AetherGba.Core.Cpu;
 
 public sealed partial class Arm7Tdmi
 {
-    private int _cycles;
-    private readonly GbaBus _bus;
-    private readonly InterruptController _interrupts;
-
-    public delegate void ExecuteArmInstruction(uint instruction);
-    public readonly ExecuteArmInstruction[] ArmInstructionDispatch;
-
-    public delegate void ExecuteThumbInstruction(ushort instruction);
-    public readonly ExecuteThumbInstruction[] ThumbInstructionDispatch;
-
     public RegisterBank Registers { get; private set; } = null!;
 
-    public Arm7Tdmi(GbaBus bus, InterruptController interrupts)
+    internal int Cycles;
+    internal readonly GbaBus Bus;
+
+    private readonly InterruptController _interrupts;
+
+    private readonly unsafe delegate* managed<Arm7Tdmi, uint, void>[] _armInstructionDispatch;
+    private readonly unsafe delegate* managed<Arm7Tdmi, ushort, void>[] _thumbInstructionDispatch;
+
+    public unsafe Arm7Tdmi(GbaBus bus, InterruptController interrupts)
     {
-        _bus = bus;
+        Bus = bus;
         _interrupts = interrupts;
-        ArmInstructionDispatch = GenerateArmInstructionTable();
-        ThumbInstructionDispatch = GenerateThumbInstructionTable();
+        _armInstructionDispatch = GenerateArmInstructionTable();
+        _thumbInstructionDispatch = GenerateThumbInstructionTable();
     }
 
     public void Reset()
@@ -51,7 +51,7 @@ public sealed partial class Arm7Tdmi
             return 4;
         }
 
-        _cycles = 0;
+        Cycles = 0;
         if (Registers.Cpsr.ThumbState)
         {
             StepThumb();
@@ -61,37 +61,37 @@ public sealed partial class Arm7Tdmi
             StepArm();
         }
 
-        return _cycles;
+        return Cycles;
     }
 
-    private void StepArm()
+    private unsafe void StepArm()
     {
         var instructionAddress = Registers.ProgramCounter;
 
-        var instruction = _bus.Read32(instructionAddress);
+        var instruction = Bus.Read32(instructionAddress);
         Registers.ProgramCounter = instructionAddress + 4;
 
         if (!ConditionPassed((Condition)(instruction >> 28))) //bits 31-28
         {
-            _cycles += _bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true);
+            Cycles += Bus.GetCpuAccessCycles(Registers.ProgramCounter, AccessWidth.Word, sequential: true);
             return;
         }
 
         uint decodeBits = ((instruction >> 16) & 0xFF0) | ((instruction >> 4) & 0xF);
-        ArmInstructionDispatch[decodeBits](instruction);
+        _armInstructionDispatch[decodeBits](this, instruction);
     }
 
-    private void StepThumb()
+    private unsafe void StepThumb()
     {
         var instructionAddress = Registers.ProgramCounter;
-        var instruction = _bus.Read16(instructionAddress);
+        var instruction = Bus.Read16(instructionAddress);
         Registers.ProgramCounter = instructionAddress + 2;
 
         var decodeBits = instruction >> 6;
-        ThumbInstructionDispatch[decodeBits](instruction);
+        _thumbInstructionDispatch[decodeBits](this, instruction);
     }
 
-    private uint DecodeImmediateOperand(uint instruction, out bool carryOut)
+    internal uint DecodeImmediateOperand(uint instruction, out bool carryOut)
     {
         var immediate = instruction & 0xFF;
         var rotate = (int)((instruction >> 8) & 0xF) * 2;
@@ -100,7 +100,7 @@ public sealed partial class Arm7Tdmi
         return result;
     }
 
-    private uint ComputeShiftedRegisterOperand(uint instruction, out bool carryOut)
+    internal uint ComputeShiftedRegisterOperand(uint instruction, out bool carryOut)
     {
         var rm = (int)(instruction & 0xF);
         var rs = (int)(instruction >> 8) & 0xF;
@@ -127,7 +127,7 @@ public sealed partial class Arm7Tdmi
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool ConditionPassed(Condition condition) =>
+    internal bool ConditionPassed(Condition condition) =>
         condition switch
         {
             Condition.Eq => Registers.Cpsr.Zero,
@@ -167,30 +167,30 @@ public sealed partial class Arm7Tdmi
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void UpdateNz(uint result)
+    internal void UpdateNz(uint result)
     {
         Registers.Cpsr.Negative = (result & 0x80000000) != 0;
         Registers.Cpsr.Zero = result == 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetCarry(bool carry) =>
+    internal void SetCarry(bool carry) =>
         Registers.Cpsr.Carry = carry;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetOverflow(bool overflow) =>
+    internal void SetOverflow(bool overflow) =>
         Registers.Cpsr.Overflow = overflow;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetNegative(bool negative) =>
+    internal void SetNegative(bool negative) =>
         Registers.Cpsr.Negative = negative;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetZero(bool zero) =>
+    internal void SetZero(bool zero) =>
         Registers.Cpsr.Zero = zero;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void UpdateArithmeticFlags(uint left, uint right, uint result, bool subtraction)
+    internal void UpdateArithmeticFlags(uint left, uint right, uint result, bool subtraction)
     {
         Registers.Cpsr.Negative = (result & 0x80000000) != 0;
         Registers.Cpsr.Zero = result == 0;
@@ -207,7 +207,7 @@ public sealed partial class Arm7Tdmi
         }
     }
 
-    private uint ShiftLeft(uint value, int amount, out bool carryOut)
+    internal uint ShiftLeft(uint value, int amount, out bool carryOut)
     {
         switch (amount)
         {
@@ -224,7 +224,7 @@ public sealed partial class Arm7Tdmi
         }
     }
 
-    private uint ShiftRightLogical(uint value, int amount, bool registerShift, out bool carryOut)
+    internal uint ShiftRightLogical(uint value, int amount, bool registerShift, out bool carryOut)
     {
         switch (amount)
         {
@@ -243,7 +243,7 @@ public sealed partial class Arm7Tdmi
         }
     }
 
-    private uint ShiftRightArithmetic(uint value, int amount, bool registerShift, out bool carryOut)
+    internal uint ShiftRightArithmetic(uint value, int amount, bool registerShift, out bool carryOut)
     {
         switch (amount)
         {
@@ -260,7 +260,7 @@ public sealed partial class Arm7Tdmi
         }
     }
 
-    private uint RotateRight(uint value, int amount, bool registerShift, out bool carryOut)
+    internal uint RotateRight(uint value, int amount, bool registerShift, out bool carryOut)
     {
         if (amount == 0 && !registerShift) //ror#0 is interpreted as rrx#1, like ror#1 but result bit 31 is set to old C
         {
@@ -277,7 +277,7 @@ public sealed partial class Arm7Tdmi
         return result;
     }
 
-    private static int GetMultiplierArrayCycles(uint multiplierOperand, bool unSigned)
+    internal static int GetMultiplierArrayCycles(uint multiplierOperand, bool unSigned)
     {
         const uint SingleCycleMask = 0xffffff00;
         const uint DoubleCycleMask = 0xffff0000;
@@ -310,9 +310,9 @@ public sealed partial class Arm7Tdmi
         return (multiplierOperand & TripleCycleMask) is 0 or TripleCycleMask ? 3 : 4;
     }
 
-    public ExecuteArmInstruction[] GenerateArmInstructionTable()
+    private static unsafe delegate* managed<Arm7Tdmi, uint, void>[] GenerateArmInstructionTable()
     {
-        ExecuteArmInstruction[] table = new ExecuteArmInstruction[4096];
+        var table = new delegate* managed<Arm7Tdmi, uint, void>[4096];
         for (uint i = 0; i < 4096; i++)
         {
             uint opCode = ((i & 0xFF0) << 16) | ((i & 0xF) << 4);
@@ -322,38 +322,33 @@ public sealed partial class Arm7Tdmi
         return table;
     }
 
-    private ExecuteArmInstruction DecodeArmInstruction(uint instruction)
+    private static unsafe delegate* managed<Arm7Tdmi, uint, void> DecodeArmInstruction(uint instruction)
     {
         var bits27_25 = (instruction >> 25) & 0b111;
         if (bits27_25 == 0b111)
         {
-            return Swi;
-            //return "SWI";
+            return &ArmOps.Swi;
         }
         else if (bits27_25 == 0b101)
         {
             if ((instruction & 0x01000000) == 0) //bit 24
             {
-                return B;
-                //return "B";
+                return &ArmOps.B;
             }
             else
             {
-                return Bl;
-                //return "BL";
+                return &ArmOps.Bl;
             }
         }
         else if (bits27_25 == 0b100)
         {
             if ((instruction & 0x00100000) == 0)
             {
-                return Stm;
-                //return "STM";
+                return &ArmOps.Stm;
             }
             else
             {
-                return Ldm;
-                //return "LDM";
+                return &ArmOps.Ldm;
             }
         }
         else if (bits27_25 == 0b011)
@@ -362,23 +357,19 @@ public sealed partial class Arm7Tdmi
             {
                 if ((instruction & 0x00400000) == 0) //bit 22
                 {
-                    return Str;
-                    //return "STR";
+                    return &ArmOps.Str;
                 }
 
-                return Str;
-                //return "STRB";
+                return &ArmOps.Str;
             }
             else
             {
                 if ((instruction & 0x00400000) == 0) //bit 22
                 {
-                    return Ldr;
-                    //return "LDR";
+                    return &ArmOps.Ldr;
                 }
 
-                return Ldr;
-                //return "LDRB";
+                return &ArmOps.Ldr;
             }
         }
         else if (bits27_25 == 0b010)
@@ -387,23 +378,19 @@ public sealed partial class Arm7Tdmi
             {
                 if ((instruction & 0x00400000) == 0) //bit 22
                 {
-                    return Str;
-                    //return "STR Imm";
+                    return &ArmOps.Str;
                 }
 
-                return Str;
-                //return "STRB Imm";
+                return &ArmOps.Str;
             }
             else
             {
                 if ((instruction & 0x00400000) == 0) //bit 22
                 {
-                    return Ldr;
-                    //return "LDR Imm";
+                    return &ArmOps.Ldr;
                 }
 
-                return Ldr;
-                //return "LDRB Imm";
+                return &ArmOps.Ldr;
             }
         }
         else if (bits27_25 == 0b001)
@@ -412,88 +399,71 @@ public sealed partial class Arm7Tdmi
 
             if ((bits24_20 & 0b11011) == 0b10010)
             {
-                return MsrImm;
-                //return "MSR Imm";
+                return &ArmOps.MsrImm;
             }
             else if (bits24_20 == 0b10001)
             {
-                return TstImm;
-                //return "TST Imm";
+                return &ArmOps.TstImm;
             }
             else if (bits24_20 == 0b10011)
             {
-                return TeqImm;
-                //return "TEQ Imm";
+                return &ArmOps.TeqImm;
             }
             else if (bits24_20 == 0b10101)
             {
-                return CmpImm;
-                //return "CMP Imm";
+                return &ArmOps.CmpImm;
             }
             else if (bits24_20 == 0b10111)
             {
-                return CmnImm;
-                //return "CMN Imm";
+                return &ArmOps.CmnImm;
             }
             else if ((bits24_20 >> 1) == 0)
             {
-                return AndImm;
-                //return "AND Imm";
+                return &ArmOps.AndImm;
             }
             else if ((bits24_20 >> 1) == 0b0001)
             {
-                return EorImm;
-                //return "EOR Imm";
+                return &ArmOps.EorImm;
             }
             else if ((bits24_20 >> 1) == 0b0010)
             {
-                return SubImm;
-                //return "SUB Imm";
+                return &ArmOps.SubImm;
             }
             else if ((bits24_20 >> 1) == 0b0011)
             {
-                return RsbImm;
-                //return "RSB Imm";
+                return &ArmOps.RsbImm;
             }
             else if ((bits24_20 >> 1) == 0b0100)
             {
-                return AddImm;
-                //return "ADD Imm";
+                return &ArmOps.AddImm;
             }
             else if ((bits24_20 >> 1) == 0b0101)
             {
-                return AdcImm;
-                //return "ADC Imm";
+                return &ArmOps.AdcImm;
             }
             else if ((bits24_20 >> 1) == 0b0110)
             {
-                //return "SBC Imm";
-                return SbcImm;
+                return &ArmOps.SbcImm;
             }
             else if ((bits24_20 >> 1) == 0b0111)
             {
-                //return "RSC Imm";
-                return RscImm;
+                return &ArmOps.RscImm;
             }
             else if ((bits24_20 >> 1) == 0b1100)
             {
-                return OrrImm;
-                //return "ORR Imm";
+                return &ArmOps.OrrImm;
             }
             else if ((bits24_20 >> 1) == 0b1101)
             {
-                //return "MOV Imm";
-                return MovImm;
+                return &ArmOps.MovImm;
             }
             else if ((bits24_20 >> 1) == 0b1110)
             {
-                //return "BIC Imm";
-                return BicImm;
+                return &ArmOps.BicImm;
             }
             else if ((bits24_20 >> 1) == 0b1111)
             {
-                //return "MVN Imm";
-                return MvnImm;
+                return &ArmOps.MvnImm;
             }
         }
         else
@@ -503,168 +473,136 @@ public sealed partial class Arm7Tdmi
 
             if (bits24_20 == 0b10010 && bits7_4 == 0x1)
             {
-                //return "BX";
-                return Bx;
+                return &ArmOps.Bx;
             }
             else if (bits24_20 == 0b10000 && bits7_4 == 0b1001)
             {
-                //return "SWP";
-                return Swp;
+                return &ArmOps.Swp;
             }
             else if (bits24_20 == 0b10100 && bits7_4 == 0b1001)
             {
-                //return "SWPB";
-                return Swpb;
+                return &ArmOps.Swpb;
             }
             else if ((bits24_20 & 0b11011) == 0b10010 && bits7_4 == 0)
             {
-                //return "MSR";
-                return Msr;
+                return &ArmOps.Msr;
             }
             else if ((bits24_20 & 0b11011) == 0b10000 && bits7_4 == 0)
             {
-                //return "MRS";
-                return Mrs;
+                return &ArmOps.Mrs;
             }
             else if ((bits24_20 >> 1) == 0 && bits7_4 == 0b1001)
             {
-                //return "MUL";
-                return Mul;
+                return &ArmOps.Mul;
             }
             else if ((bits24_20 >> 1) == 1 && bits7_4 == 0b1001)
             {
-                //return "MLA";
-                return Mla;
+                return &ArmOps.Mla;
             }
             else if ((bits24_20 >> 1) == 0b100 && bits7_4 == 0b1001)
             {
-                //return "UMULL";
-                return Umull;
+                return &ArmOps.Umull;
             }
             else if ((bits24_20 >> 1) == 0b101 && bits7_4 == 0b1001)
             {
-                //return "UMLAL";
-                return Umlal;
+                return &ArmOps.Umlal;
             }
             else if ((bits24_20 >> 1) == 0b110 && bits7_4 == 0b1001)
             {
-                //return "SMULL";
-                return Smull;
+                return &ArmOps.Smull;
             }
             else if ((bits24_20 >> 1) == 0b111 && bits7_4 == 0b1001)
             {
-                //return "SMLAL";
-                return Smlal;
+                return &ArmOps.Smlal;
             }
             else if ((bits24_20 & 1) == 1 && bits7_4 == 0b1011)
             {
-                //return "LDRH";
-                return Ldrh;
+                return &ArmOps.Ldrh;
             }
             else if ((bits24_20 & 1) == 1 && bits7_4 == 0b1101)
             {
-                //return "LDRSB";
-                return Ldrsb;
+                return &ArmOps.Ldrsb;
             }
             else if ((bits24_20 & 1) == 1 && bits7_4 == 0b1111)
             {
-                //return "LDRSH";
-                return Ldrsh;
+                return &ArmOps.Ldrsh;
             }
             else if ((bits24_20 & 1) == 0 && bits7_4 == 0b1011)
             {
-                //return "STRH";
-                return Strh;
+                return &ArmOps.Strh;
             }
             else if (bits24_20 == 0b10001)
             {
-                //return "TST";
-                return Tst;
+                return &ArmOps.Tst;
             }
             else if (bits24_20 == 0b10011)
             {
-                //return "TEQ";
-                return Teq;
+                return &ArmOps.Teq;
             }
             else if (bits24_20 == 0b10101)
             {
-                //return "CMP";
-                return Cmp;
+                return &ArmOps.Cmp;
             }
             else if (bits24_20 == 0b10111)
             {
-                //return "CMN";
-                return Cmn;
+                return &ArmOps.Cmn;
             }
             else if ((bits24_20 >> 1) == 0)
             {
-                //return "AND";
-                return And;
+                return &ArmOps.And;
             }
             else if ((bits24_20 >> 1) == 0b0001)
             {
-                //return "EOR";
-                return Eor;
+                return &ArmOps.Eor;
             }
             else if ((bits24_20 >> 1) == 0b0010)
             {
-                //return "SUB";
-                return Sub;
+                return &ArmOps.Sub;
             }
             else if ((bits24_20 >> 1) == 0b0011)
             {
-                //return "RSB";
-                return Rsb;
+                return &ArmOps.Rsb;
             }
             else if ((bits24_20 >> 1) == 0b0100)
             {
-                //return "ADD";
-                return Add;
+                return &ArmOps.Add;
             }
             else if ((bits24_20 >> 1) == 0b0101)
             {
-                //return "ADC";
-                return Adc;
+                return &ArmOps.Adc;
             }
             else if ((bits24_20 >> 1) == 0b0110)
             {
-                //return "SBC";
-                return Sbc;
+                return &ArmOps.Sbc;
             }
             else if ((bits24_20 >> 1) == 0b0111)
             {
-                //return "RSC";
-                return Rsc;
+                return &ArmOps.Rsc;
             }
             else if ((bits24_20 >> 1) == 0b1100)
             {
-                //return "ORR";
-                return Orr;
+                return &ArmOps.Orr;
             }
             else if ((bits24_20 >> 1) == 0b1101)
             {
-                //return "MOV";
-                return Mov;
+                return &ArmOps.Mov;
             }
             else if ((bits24_20 >> 1) == 0b1110)
             {
-                //return "BIC";
-                return Bic;
+                return &ArmOps.Bic;
             }
             else if ((bits24_20 >> 1) == 0b1111)
             {
-                //return "MVN";
-                return Mvn;
+                return &ArmOps.Mvn;
             }
         }
 
-        return Illegal;
-        //return "ILL";
+        return &ArmOps.Illegal;
     }
 
-    public ExecuteThumbInstruction[] GenerateThumbInstructionTable()
+    private static unsafe delegate* managed<Arm7Tdmi, ushort, void>[] GenerateThumbInstructionTable()
     {
-        ExecuteThumbInstruction[] table = new ExecuteThumbInstruction[1024];
+        var table = new delegate* managed<Arm7Tdmi, ushort, void>[1024];
         for (ushort i = 0; i < 1024; i++)
         {
             ushort opCode = (ushort)(i << 6);
@@ -674,7 +612,7 @@ public sealed partial class Arm7Tdmi
         return table;
     }
 
-    public ExecuteThumbInstruction DecodeThumbInstruction(ushort instruction)
+    private static unsafe delegate* managed<Arm7Tdmi, ushort, void> DecodeThumbInstruction(ushort instruction)
     {
         var bits11_9 = (instruction >> 9) & 0b111;
         var bits11_6 = (instruction >> 6) & 0x3f;
@@ -687,17 +625,17 @@ public sealed partial class Arm7Tdmi
                 switch (bits12_11)
                 {
                     case 0b00:
-                        return LslImm; //f1
+                        return &ThumbOps.LslImm; //f1
                     case 0b01:
-                        return LsrImm; //f1
+                        return &ThumbOps.LsrImm; //f1
                     case 0b10:
-                        return AsrImm; //f1
+                        return &ThumbOps.AsrImm; //f1
                     case 0b11:
                         if ((instruction & 0x200) != 0) //bit 9
                         {
-                            return Sub; //f2
+                            return &ThumbOps.Sub; //f2
                         }
-                        return Add; //f2
+                        return &ThumbOps.Add; //f2
                 }
                 break; //f1 f2
             case 0b0010:
@@ -705,128 +643,112 @@ public sealed partial class Arm7Tdmi
                 //f3
                 return bits12_11 switch
                 {
-                    0b00 => MovImm,
-                    0b01 => CmpImm,
-                    0b10 => AddImm,
-                    0b11 => SubImm,
-                    _ => Illegal
+                    0b00 => &ThumbOps.MovImm,
+                    0b01 => &ThumbOps.CmpImm,
+                    0b10 => &ThumbOps.AddImm,
+                    0b11 => &ThumbOps.SubImm,
+                    _ => &ThumbOps.Illegal
                 };
             case 0b0100:
                 switch (bits11_6)
                 {
-                    case 0b000000:
-                        return And; //f4
-                    case 0b000001:
-                        return Eor; //f4
-                    case 0b000010:
-                        return Lsl; //f4
-                    case 0b000011:
-                        return Lsr; //f4
-                    case 0b000100:
-                        return Asr; //f4
-                    case 0b000101:
-                        return Adc; //f4
-                    case 0b000110:
-                        return Sbc; //f4
-                    case 0b000111:
-                        return Ror; //f4
-                    case 0b001000:
-                        return Tst; //f4
-                    case 0b001001:
-                        return Neg; //f4
-                    case 0b001010:
-                        return Cmp; //f4
-                    case 0b001011:
-                        return Cmn; //f4
-                    case 0b001100:
-                        return Orr; //f4
-                    case 0b001101:
-                        return Mul; //f4
-                    case 0b001110:
-                        return Bic; //f4
-                    case 0b001111:
-                        return Mvn; //f4
+                    case 0b000000: return &ThumbOps.And; //f4
+                    case 0b000001: return &ThumbOps.Eor; //f4
+                    case 0b000010: return &ThumbOps.Lsl; //f4
+                    case 0b000011: return &ThumbOps.Lsr; //f4
+                    case 0b000100: return &ThumbOps.Asr; //f4
+                    case 0b000101: return &ThumbOps.Adc; //f4
+                    case 0b000110: return &ThumbOps.Sbc; //f4
+                    case 0b000111: return &ThumbOps.Ror; //f4
+                    case 0b001000: return &ThumbOps.Tst; //f4
+                    case 0b001001: return &ThumbOps.Neg; //f4
+                    case 0b001010: return &ThumbOps.Cmp; //f4
+                    case 0b001011: return &ThumbOps.Cmn; //f4
+                    case 0b001100: return &ThumbOps.Orr; //f4
+                    case 0b001101: return &ThumbOps.Mul; //f4
+                    case 0b001110: return &ThumbOps.Bic; //f4
+                    case 0b001111: return &ThumbOps.Mvn; //f4
                     default:
                         if ((instruction & 0x800) != 0) //bit 11
                         {
-                            return LdrPc; //f6
+                            return &ThumbOps.LdrPc; //f6
                         }
 
                         return ((instruction >> 8) & 0xf) switch
                         {
-                            0b0100 => AddHiReg, //f5
-                            0b0101 => CmpHiReg, //f5
-                            0b0110 => MovHiReg, //f5
-                            0b0111 => Bx, //f5
-                            _ => Illegal
+                            0b0100 => &ThumbOps.AddHiReg, //f5
+                            0b0101 => &ThumbOps.CmpHiReg, //f5
+                            0b0110 => &ThumbOps.MovHiReg, //f5
+                            0b0111 => &ThumbOps.Bx, //f5
+                            _ => &ThumbOps.Illegal
                         };
                 }
             case 0b0101:
                 return bits11_9 switch
                 {
-                    0b000 => Str, //f7
-                    0b001 => Strh, //f8
-                    0b010 => Strb, //f7
-                    0b011 => Ldsb, //f8
-                    0b100 => Ldr, //f7
-                    0b101 => Ldrh, //f8
-                    0b110 => Ldrb, //f7
-                    0b111 => Ldsh, //f8
-                    _ => Illegal
+                    0b000 => &ThumbOps.Str, //f7
+                    0b001 => &ThumbOps.Strh, //f8
+                    0b010 => &ThumbOps.Strb, //f7
+                    0b011 => &ThumbOps.Ldsb, //f8
+                    0b100 => &ThumbOps.Ldr, //f7
+                    0b101 => &ThumbOps.Ldrh, //f8
+                    0b110 => &ThumbOps.Ldrb, //f7
+                    0b111 => &ThumbOps.Ldsh, //f8
+                    _ => &ThumbOps.Illegal
                 };
             case 0b0110:
             case 0b0111:
                 //f9
                 return bits12_11 switch
                 {
-                    0b00 => StrImm,
-                    0b01 => LdrImm,
-                    0b10 => StrbImm,
-                    0b11 => LdrbImm,
-                    _ => Illegal
+                    0b00 => &ThumbOps.StrImm,
+                    0b01 => &ThumbOps.LdrImm,
+                    0b10 => &ThumbOps.StrbImm,
+                    0b11 => &ThumbOps.LdrbImm,
+                    _ => &ThumbOps.Illegal
                 };
             case 0b1000:
                 //f10
                 if ((instruction & 0x800) != 0) //bit 11
                 {
-                    return LdrhImm;
+                    return &ThumbOps.LdrhImm;
                 }
-                return StrhImm;
+                return &ThumbOps.StrhImm;
             case 0b1001:
                 //f11
                 if ((instruction & 0x800) != 0) //bit 11
                 {
-                    return LdrWithSp;
+                    return &ThumbOps.LdrWithSp;
                 }
-                return StrWithSp;
+                return &ThumbOps.StrWithSp;
             case 0b1010:
-                return AddWithPcOrSp; //f12
+                return &ThumbOps.AddWithPcOrSp; //f12
             case 0b1011:
                 return bits11_9 switch
                 {
-                    0b000 => AddSubOffsetSp, //f13 sp (+/-)= imm
-                    0b010 => Push, //f14
-                    0b110 => Pop, //f14
-                    _ => Illegal
+                    0b000 => &ThumbOps.AddSubOffsetSp, //f13 sp (+/-)= imm
+                    0b010 => &ThumbOps.Push, //f14
+                    0b110 => &ThumbOps.Pop, //f14
+                    _ => &ThumbOps.Illegal
                 };
             case 0b1100:
                 //f15
                 if ((instruction & 0x800) != 0) //bit 11
                 {
-                    return Ldm;
+                    return &ThumbOps.Ldm;
                 }
-                return Stm;
+                return &ThumbOps.Stm;
             case 0b1101:
                 if ((instruction & 0xf00) == 0xf00) //bits 11-8 == 0xf swi
                 {
-                    return Swi; //f17
+                    return &ThumbOps.Swi; //f17
                 }
-                return BCond; //f16
+                return &ThumbOps.BCond; //f16
             case 0b1110:
-                return B; //f18
+                return &ThumbOps.B; //f18
             case 0b1111:
-                return Bl; //f19
+                return &ThumbOps.Bl; //f19
         }
-        return Illegal;
+        return &ThumbOps.Illegal;
     }
 }

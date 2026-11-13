@@ -82,14 +82,16 @@ public sealed class Ppu
 
     private void EnterHBlank(GbaBus bus)
     {
-        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
+        //_memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
+        _memory.Io.REG_DISPSTAT |= 0b10;
 
         if (_memory.Io.REG_VCOUNT < ScreenHeight)
         {
             _dma.RunDmas(DmaTimingType.Hblank, bus);
         }
 
-        if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
+        if ((_memory.Io.REG_DISPSTAT & 0x10) == 0x10) // hlbank irq enabled bit 4
+        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
         {
             _interrupts.Request(InterruptType.HBlank);
         }
@@ -166,7 +168,8 @@ public sealed class Ppu
     {
         //return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
-        if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
+        if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
+        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
         {
             var paletteRam = _memory.PaletteRam.AsSpan(0, 2);
             var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8)); //backdrop color is set by zero index of palette

@@ -51,6 +51,22 @@ public sealed class GbaBus(GbaMemory memory)
         };
     }
 
+    public ushort ReadThumbInstruction(uint address)
+    {
+        var aligned = address & ~1u;
+        var gamePakOffset = unchecked(aligned - 0x08000000u);
+
+        // less than 32 Mib(max ROM size) offset for any of the 3 ROM replications then take fast path
+        if (gamePakOffset >= 0x06000000u)
+        {
+            return Read16(address);
+        }
+
+        int offset = (int)(gamePakOffset & 0x01ffffffu); // mod by max rom size for offset
+        var buff = memory.Rom.AsSpan(offset, 2);
+        return (ushort)((buff[1] << 8) | buff[0]);
+    }
+
     public byte Read8(uint address)
     {
         var region = ResolveRegion(address, 1, out var buffer);

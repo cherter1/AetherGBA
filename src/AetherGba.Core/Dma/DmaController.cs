@@ -40,6 +40,9 @@ public sealed class DmaController
             {
                 channel.LengthInternal = 0x10000;
             }
+
+            //var channelControl = channel.Control;
+
             var destIncType = (channel.Control >> 5) & 0b11;
             var sourceIncType = (channel.Control >> 7) & 0b11;
             var repeat = ((channel.Control >> 9) & 1) == 1;
@@ -118,14 +121,14 @@ public sealed class DmaController
             var channel = Channels[idx];
 
             if (!channel.Enabled) continue;
-            //if (!channel.Enabled || (DmaTimingType)((channel.Control >> 12) & 0b11) != DmaTimingType.Immediately) continue;
 
             //CounterImm++;
             channel.Enabled = false;
+            //var channelControl = channel.Control;
             channel.Control = (ushort)BitUtils.SetBit(channel.Control, 15, false);
 
-            var index = Array.IndexOf(Channels, channel);
-            if (index == 3 && channel.LengthInternal == 0)
+            //var index = Array.IndexOf(Channels, channel);
+            if (idx == 3 && channel.LengthInternal == 0)
             {
                 channel.LengthInternal = 0x10000;
             }
@@ -191,7 +194,7 @@ public sealed class DmaController
                 continue;
             }
 
-            _interrupts.Request((InterruptType)((ushort)InterruptType.Dma0 << index));
+            _interrupts.Request((InterruptType)((ushort)InterruptType.Dma0 << idx));
         }
     }
 }

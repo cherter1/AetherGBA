@@ -1,3 +1,4 @@
+using System.Numerics;
 using AetherGba.Core.Common;
 using AetherGba.Core.Interrupts;
 using AetherGba.Core.Memory;
@@ -17,6 +18,7 @@ public sealed class DmaController
         Channels = Enumerable.Range(0, 4).Select((_, index) => new DmaChannel(memory, index)).ToArray();
     }
 
+    public int OtherDmaCount;
     public void RunDmas(DmaTimingType timingType, GbaBus bus)
     {
         foreach (var channel in Channels)
@@ -27,6 +29,7 @@ public sealed class DmaController
                 continue;
             }
 
+            //OtherDmaCount++;
             if (timingType is DmaTimingType.VBlank or DmaTimingType.Hblank)
             {
                 channel.LengthInternal = channel.Count;
@@ -102,13 +105,22 @@ public sealed class DmaController
         }
     }
 
+    public int CounterImm;
     public void RunImmediateDma(GbaBus bus)
     {
-        PendImmMask = 0;
-        foreach (var channel in Channels)
-        {
-            if (!channel.Enabled) continue;
+        //PendImmMask = 0;
 
+        while (PendImmMask != 0)
+        //foreach (var channel in Channels)
+        {
+            int idx = BitOperations.TrailingZeroCount(PendImmMask);
+            PendImmMask &= ~(1u << idx);
+            var channel = Channels[idx];
+
+            if (!channel.Enabled) continue;
+            //if (!channel.Enabled || (DmaTimingType)((channel.Control >> 12) & 0b11) != DmaTimingType.Immediately) continue;
+
+            //CounterImm++;
             channel.Enabled = false;
             channel.Control = (ushort)BitUtils.SetBit(channel.Control, 15, false);
 
@@ -125,6 +137,7 @@ public sealed class DmaController
             var originalLength = channel.LengthInternal;
             var unitSize = is32BitCopy ? 4u : 2u;
 
+            //Console.WriteLine($"ImmDma Count {CounterImm}");
             //Console.WriteLine($"Writing Dma {index}, type: {timingType}");
             //Console.WriteLine($"control: 0x{channel.Control:x4}, src: 0x{channel.SourceInternal:x8}, dest: 0x{channel.DestinationInternal:x8}, unitSize: {unitSize}, count: {channel.LengthInternal}");
 

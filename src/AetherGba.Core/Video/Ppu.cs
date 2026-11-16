@@ -281,13 +281,7 @@ public sealed class Ppu
                 }
 
                 var isSinglePalette = bgScanlineInfo[bgIdx].IsSinglePalette;
-                var paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
-                    tileMapStartOffset: bgScanlineInfo[bgIdx].TileMapStartOffset,
-                    xTiles: bgScanlineInfo[bgIdx].XTiles,
-                    tileY: bgScanlineInfo[bgIdx].CurrentYTile,
-                    pixelYInTile: bgScanlineInfo[bgIdx].PixelYInTile,
-                    isSinglePalette,
-                    tileDataStartOffset: bgScanlineInfo[bgIdx].TileDataStartOffset);
+                var paletteIndex = RenderTiledTextBackground(in vram, x, in bgScanlineInfo[bgIdx], hofsTable[bgIdx]);
 
                 if (paletteIndex == 0)
                 {
@@ -541,11 +535,12 @@ public sealed class Ppu
         return objPaletteIndex;
     }
 
-    private static int RenderTiledTextBackground(in ReadOnlySpan<byte> vram, int x, ushort hofs, int tileMapStartOffset,
-        int xTiles, int tileY, int pixelYInTile, bool isSinglePalette, int tileDataStartOffset)
+    private static int RenderTiledTextBackground(in ReadOnlySpan<byte> vram, int x, in TextBackgroundScanlineInfo bgInfo, ushort hofs)
     {
+        int tileMapStartOffset = bgInfo.TileMapStartOffset;
+        int pixelYInTile = bgInfo.PixelYInTile;
         var bgXStartOffset = x + hofs;
-        if (xTiles > 32 && ((bgXStartOffset >> 8) & 1) != 0) // startOffset greater than pixels per map or SE length across AND xTiles > 32, if its 32 mirror the single X SE
+        if (bgInfo.XTiles > 32 && ((bgXStartOffset >> 8) & 1) != 0) // startOffset greater than pixels per map or SE length across AND xTiles > 32, if its 32 mirror the single X SE
         {
             tileMapStartOffset += 0x800; //move startOffset to next SE(map) start offset
         }
@@ -554,7 +549,7 @@ public sealed class Ppu
         var tileX = bgXStartOffset >> 3; // div 8 to count tiles from offset
         var pixelXInTile = bgXStartOffset & 7; // modulo 8 for pixel 0-7 on x axis
 
-        var tileMapIndex = tileY * 32 + tileX; //tileY * 32 + tileX
+        var tileMapIndex = bgInfo.CurrentYTile * 32 + tileX; //tileY * 32 + tileX
         var tileMapEntryOffset = tileMapStartOffset + tileMapIndex * 2; //tileMapStartOffset + mapIndex * mapEntrySize
         var tileMapEntry = Read16(in vram, tileMapEntryOffset);
 
@@ -564,17 +559,17 @@ public sealed class Ppu
         if (vFlip) pixelYInTile = 7 - pixelYInTile;
 
         int paletteIndex;
-        if (isSinglePalette) //8bpp mode
+        if (bgInfo.IsSinglePalette) //8bpp mode
         {
             var tileIndex = tileMapEntry & 0x03ff;
-            var currentTileOffset = tileDataStartOffset + tileIndex * 0x40; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
+            var currentTileOffset = bgInfo.TileDataStartOffset + tileIndex * 0x40; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
             var currentPixelOffset = currentTileOffset + (pixelYInTile * 8) + pixelXInTile;
             paletteIndex = vram[currentPixelOffset];
         }
         else //4bpp mode
         {
             var tileIndex = tileMapEntry & 0x03ff;
-            var currentTileOffset = tileDataStartOffset + tileIndex * 0x20; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
+            var currentTileOffset = bgInfo.TileDataStartOffset + tileIndex * 0x20; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
             var currentPixelOffset = currentTileOffset + (pixelYInTile * 4) + (pixelXInTile >> 1); //YPixel * 4 bc 2 pixels per byte in 8pixel row XPixel /2 for same reason
             paletteIndex = (pixelXInTile & 1) == 0 // mod by 2 if even Index take bits 0-3 else take bits 4-7
                 ? vram[currentPixelOffset] & 0xf
@@ -716,13 +711,7 @@ public sealed class Ppu
                 {
                     //text
                     isSinglePalette = bgScanlineInfos[bgIdx].IsSinglePalette;
-                    paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
-                        bgScanlineInfos[bgIdx].TileMapStartOffset,
-                        bgScanlineInfos[bgIdx].XTiles,
-                        bgScanlineInfos[bgIdx].CurrentYTile,
-                        bgScanlineInfos[bgIdx].PixelYInTile,
-                        isSinglePalette,
-                        bgScanlineInfos[bgIdx].TileDataStartOffset);
+                    paletteIndex = RenderTiledTextBackground(in vram, x, in bgScanlineInfos[bgIdx], hofsTable[bgIdx]);
                 }
 
                 if (paletteIndex == 0) continue;

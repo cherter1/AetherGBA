@@ -104,6 +104,7 @@ public sealed class DmaController
 
     public void RunImmediateDma(GbaBus bus)
     {
+        PendImmMask = 0;
         foreach (var channel in Channels)
         {
             if (!channel.Enabled) continue;

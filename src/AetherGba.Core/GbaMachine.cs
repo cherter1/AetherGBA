@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using AetherGba.Core.Bios;
+using AetherGba.Core.Common;
 using AetherGba.Core.Cpu;
 using AetherGba.Core.Dma;
 using AetherGba.Core.Input;
@@ -22,6 +23,7 @@ public sealed class GbaMachine
     public KeypadState Keypad { get; }
     public GbaCartridge? Cartridge { get; }
     public FrameBuffer FrameBuffer => Ppu.FrameBuffer;
+    private GbaEventHandler _eventHandler { get; }
 
     private GbaMachine(
         Arm7Tdmi cpu,
@@ -31,7 +33,7 @@ public sealed class GbaMachine
         DmaController dma,
         InterruptController interrupts,
         KeypadState keypad,
-        GbaCartridge? cartridge)
+        GbaCartridge? cartridge, GbaEventHandler eventHandler)
     {
         Cpu = cpu;
         Bus = bus;
@@ -41,10 +43,17 @@ public sealed class GbaMachine
         Interrupts = interrupts;
         Keypad = keypad;
         Cartridge = cartridge;
+        _eventHandler = eventHandler;
+        _eventHandler.AddScheduledEvent(new GbaEvent
+        {
+            CycleDue = 1006u, //hblank start cycle
+            EventAction = ppu.EnterHBlank
+        });
     }
 
     public static GbaMachine Create(GbaMachineOptions options)
     {
+        var eventHandler = new GbaEventHandler();
         var memory = new GbaMemory(options.SaveDirectory ?? string.Empty);
         var interrupts = new InterruptController(memory);
         var keypad = new KeypadState(memory, interrupts);
@@ -53,7 +62,7 @@ public sealed class GbaMachine
         memory.Io.ConnectInterruptController(interrupts);
         var dma = new DmaController(interrupts, memory);
         memory.Io.ConnectDmaController(dma);
-        var ppu = new Ppu(interrupts, dma, memory);
+        var ppu = new Ppu(interrupts, dma, memory, eventHandler);
         var bus = new GbaBus(memory);
         var cpu = new Arm7Tdmi(bus, interrupts);
 
@@ -119,7 +128,7 @@ public sealed class GbaMachine
         }
 
         bus.LoadBios(BiosImage.LoadOptional(options.BiosPath));
-        var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge);
+        var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge, eventHandler);
         machine.Reset();
         return machine;
     }
@@ -140,6 +149,7 @@ public sealed class GbaMachine
         {
             //cpuWatch.Start();
             var instructionCycles = Cpu.Step();
+            _eventHandler.CurrentCycle += (uint)instructionCycles;
             //cpuWatch.Stop();
 
             //dmaWatch.Start();
@@ -151,8 +161,9 @@ public sealed class GbaMachine
             //timerWatch.Stop();
 
             //ppuWatch.Start();
-            Ppu.Step(instructionCycles, Bus);
+            //Ppu.Step(instructionCycles, Bus);
             //ppuWatch.Stop();
+            RunScheduledEvents();
 
             //consumed += instructionCycles;
             //iterations += 1;
@@ -162,5 +173,14 @@ public sealed class GbaMachine
         //Console.WriteLine($"{dmaWatch.Elapsed.TotalMilliseconds} ms in DMA");
         //Console.WriteLine($"{timerWatch.Elapsed.TotalMilliseconds} ms in timers");
         //Console.WriteLine($"{ppuWatch.Elapsed.TotalMilliseconds} ms in ppu");
+    }
+
+    private void RunScheduledEvents()
+    {
+        while (_eventHandler.CurrentCycle >= _eventHandler.NextEventCycle)
+        {
+            var eventDue = _eventHandler.Pop();
+            eventDue.EventAction(Bus);
+        }
     }
 }

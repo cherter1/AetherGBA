@@ -20,12 +20,14 @@ public sealed class Ppu
     private readonly InterruptController _interrupts;
     private readonly DmaController _dma;
     private readonly GbaMemory _memory;
+    private readonly GbaEventHandler _eventHandler;
 
-    public Ppu(InterruptController interrupts, DmaController dma, GbaMemory memory)
+    public Ppu(InterruptController interrupts, DmaController dma, GbaMemory memory, GbaEventHandler eventHandler)
     {
         _interrupts = interrupts;
         _memory = memory;
         _dma = dma;
+        _eventHandler = eventHandler;
         FrameBuffer = new FrameBuffer(ScreenWidth, ScreenHeight);
     }
 
@@ -80,8 +82,15 @@ public sealed class Ppu
         _cyclesUntilBoundary -= cycles;
     }
 
-    private void EnterHBlank(GbaBus bus)
+    public void EnterHBlank(GbaBus bus)
     {
+        
+        _eventHandler.AddScheduledEvent(new GbaEvent
+        {
+            CycleDue = _eventHandler.CurrentCycle + (CyclesPerScanline - HBlankStartCycle),
+            EventAction = EndScanline
+        });
+        
         //_memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
         _memory.Io.REG_DISPSTAT |= 0b10;
 
@@ -105,6 +114,13 @@ public sealed class Ppu
     public bool FrameReady { get; set; }
     private void EndScanline(GbaBus bus)
     {
+        
+        _eventHandler.AddScheduledEvent(new GbaEvent
+        {
+            CycleDue = _eventHandler.CurrentCycle + HBlankStartCycle,
+            EventAction = EnterHBlank
+        });
+        
         _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, false); // leave hblank unset bit
 
         //_scanlineCycle = 0;

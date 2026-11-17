@@ -23,7 +23,7 @@ public sealed class GbaMachine
     public KeypadState Keypad { get; }
     public GbaCartridge? Cartridge { get; }
     public FrameBuffer FrameBuffer => Ppu.FrameBuffer;
-    private GbaEventHandler _eventHandler { get; }
+    private GbaEventHandler EventHandler { get; }
 
     private GbaMachine(
         Arm7Tdmi cpu,
@@ -43,8 +43,8 @@ public sealed class GbaMachine
         Interrupts = interrupts;
         Keypad = keypad;
         Cartridge = cartridge;
-        _eventHandler = eventHandler;
-        _eventHandler.AddScheduledEvent(new GbaEvent
+        EventHandler = eventHandler;
+        EventHandler.AddScheduledEvent(new GbaEvent
         {
             CycleDue = 1006u, //hblank start cycle
             EventAction = ppu.EnterHBlank
@@ -149,7 +149,7 @@ public sealed class GbaMachine
         {
             //cpuWatch.Start();
             var instructionCycles = Cpu.Step();
-            _eventHandler.CurrentCycle += (uint)instructionCycles;
+            EventHandler.CurrentCycle += (uint)instructionCycles;
             //cpuWatch.Stop();
 
             //dmaWatch.Start();
@@ -177,9 +177,9 @@ public sealed class GbaMachine
 
     private void RunScheduledEvents()
     {
-        while (_eventHandler.CurrentCycle >= _eventHandler.NextEventCycle)
+        while (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
         {
-            var eventDue = _eventHandler.Pop();
+            var eventDue = EventHandler.Pop();
             eventDue.EventAction(Bus);
         }
     }

@@ -87,6 +87,7 @@ public sealed class Ppu
         
         _eventHandler.AddScheduledEvent(new GbaEvent
         {
+            Type = GbaEventType.EndScanline,
             CycleDue = _eventHandler.CurrentCycle + (CyclesPerScanline - HBlankStartCycle),
             EventAction = EndScanline
         });
@@ -117,6 +118,7 @@ public sealed class Ppu
         
         _eventHandler.AddScheduledEvent(new GbaEvent
         {
+            Type = GbaEventType.EnterHBlank,
             CycleDue = _eventHandler.CurrentCycle + HBlankStartCycle,
             EventAction = EnterHBlank
         });
@@ -182,7 +184,7 @@ public sealed class Ppu
 
     private void RenderScanLine(int scanLine)
     {
-        //return;
+        return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
         if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
         //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank

@@ -1,13 +1,20 @@
+using AetherGba.Core.Common;
 using AetherGba.Core.Memory.SaveData;
 
 namespace AetherGba.Core.Memory;
 
 public sealed class GbaMemory
 {
-    public GbaMemory() { }
-    public GbaMemory(string savePath)
+    public GbaMemory()
+    {
+        Flash = new FlashMemory("");
+        Io = new IoRegisters(new GbaEventHandler());
+    }
+
+    public GbaMemory(string savePath, GbaEventHandler eventHandler)
     {
         Flash = new FlashMemory(savePath);
+        Io = new IoRegisters(eventHandler);
     }
 
     public readonly byte[] Bios = new byte[0x4000]; //16KB
@@ -18,6 +25,6 @@ public sealed class GbaMemory
     public readonly byte[] Oam = new byte[0x400]; //1KB
     public byte[] Rom = [];
     public readonly byte[] Sram = new byte[0x10000]; //64KB
-    public readonly FlashMemory Flash = new(""); //128KB
-    public readonly IoRegisters Io = new();
+    public readonly FlashMemory Flash; //128KB
+    public readonly IoRegisters Io;
 }

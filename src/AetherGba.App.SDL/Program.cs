@@ -104,13 +104,13 @@ while (running)
             SDL.SDL_UpdateTexture(texture, null, pixels, 240 * 2);
         }
         */
-        
+        /*
         SDL.SDL_UpdateTexture(texture, null, machine.FrameBuffer._pix, 240 * 2);
 
         SDL.SDL_RenderClear(renderer);
         SDL.SDL_RenderTexture(renderer, texture, null, null);
         SDL.SDL_RenderPresent(renderer);
-        
+        */
     }
 
     fpsCount++;

@@ -4,7 +4,7 @@ public sealed class GbaEventHandler
 {
     public GbaEventHandler()
     {
-        _eventStack[0] = new GbaEvent { CycleDue = ulong.MaxValue, EventAction = _ => { } };
+        _eventStack[0] = new GbaEvent { Type = GbaEventType.Root, CycleDue = ulong.MaxValue, EventAction = _ => { } };
     }
 
     public ulong CurrentCycle;
@@ -18,6 +18,26 @@ public sealed class GbaEventHandler
         var ev = _eventStack[_eventStackPointer--];
         NextEventCycle = _eventStack[_eventStackPointer].CycleDue;
         return ev;
+    }
+
+    public void RescheduleEventByType(GbaEventType eventType, ulong cycleDue)
+    {
+        var foundIdx = -1;
+        for (int i = 0; i < _eventStackPointer; i++)
+        {
+            if (_eventStack[i].Type == eventType)
+            {
+                //found
+                foundIdx = i;
+                break;
+            }
+        }
+        return;
+    }
+
+    public void CancelEventByType(GbaEventType eventType)
+    {
+        return;
     }
 
     public void AddScheduledEvent(GbaEvent eventType)

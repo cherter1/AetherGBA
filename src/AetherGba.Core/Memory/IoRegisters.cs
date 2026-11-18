@@ -7,6 +7,12 @@ namespace AetherGba.Core.Memory;
 
 public sealed class IoRegisters
 {
+    private readonly GbaEventHandler _eventHandler;
+    public IoRegisters(GbaEventHandler eventHandler)
+    {
+        _eventHandler = eventHandler;
+    }
+
     public uint ReadIo32Aligned(uint address)
     {
         if ((address & 3u) != 0)
@@ -309,6 +315,16 @@ public sealed class IoRegisters
                     _dma.Channels[0].Enable();
                     if ((value & 0x3000) == 0)
                     {
+                        var wasPending = _dma.HasPendingImmediate;
+                        if (!wasPending)
+                        {
+                            _eventHandler.AddScheduledEvent(new GbaEvent
+                            {
+                                Type = GbaEventType.DmaImmediate,
+                                CycleDue = _eventHandler.CurrentCycle,
+                                EventAction = _dma.RunImmediateDma
+                            });
+                        }
                         _dma.PendImmMask |= 0b0001;
                     }
                     else
@@ -344,6 +360,16 @@ public sealed class IoRegisters
                     _dma.Channels[1].Enable();
                     if ((value & 0x3000) == 0)
                     {
+                        var wasPending = _dma.HasPendingImmediate;
+                        if (!wasPending)
+                        {
+                            _eventHandler.AddScheduledEvent(new GbaEvent
+                            {
+                                Type = GbaEventType.DmaImmediate,
+                                CycleDue = _eventHandler.CurrentCycle,
+                                EventAction = _dma.RunImmediateDma
+                            });
+                        }
                         _dma.PendImmMask |= 0b0010;
                     }
                     else
@@ -379,6 +405,16 @@ public sealed class IoRegisters
                     _dma.Channels[2].Enable();
                     if ((value & 0x3000) == 0)
                     {
+                        var wasPending = _dma.HasPendingImmediate;
+                        if (!wasPending)
+                        {
+                            _eventHandler.AddScheduledEvent(new GbaEvent
+                            {
+                                Type = GbaEventType.DmaImmediate,
+                                CycleDue = _eventHandler.CurrentCycle,
+                                EventAction = _dma.RunImmediateDma
+                            });
+                        }
                         _dma.PendImmMask |= 0b0100;
                     }
                     else
@@ -414,6 +450,16 @@ public sealed class IoRegisters
                     _dma.Channels[3].Enable();
                     if ((value & 0x3000) == 0)
                     {
+                        var wasPending = _dma.HasPendingImmediate;
+                        if (!wasPending)
+                        {
+                            _eventHandler.AddScheduledEvent(new GbaEvent
+                            {
+                                Type = GbaEventType.DmaImmediate,
+                                CycleDue = _eventHandler.CurrentCycle,
+                                EventAction = _dma.RunImmediateDma
+                            });
+                        }
                         _dma.PendImmMask |= 0b1000;
                     }
                     else

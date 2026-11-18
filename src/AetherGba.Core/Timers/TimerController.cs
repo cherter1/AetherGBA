@@ -1,10 +1,12 @@
 using System.Runtime.CompilerServices;
+using AetherGba.Core.Common;
 using AetherGba.Core.Interrupts;
 
 namespace AetherGba.Core.Timers;
 
 public sealed class TimerController
 {
+    private readonly GbaEventHandler _eventHandler = new(); //TODO
     private readonly InterruptController _interrupts;
 
     private ulong _currentCycle;
@@ -234,5 +236,14 @@ public sealed class TimerController
             }
         }
         _nextTimerOverflow = next;
+
+        if (next == ulong.MaxValue)
+        {
+            _eventHandler.CancelEventByType(GbaEventType.TimerOverflow);
+        }
+        else
+        {
+            _eventHandler.RescheduleEventByType(GbaEventType.TimerOverflow, next);
+        }
     }
 }

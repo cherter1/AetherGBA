@@ -46,6 +46,7 @@ public sealed class GbaMachine
         EventHandler = eventHandler;
         EventHandler.AddScheduledEvent(new GbaEvent
         {
+            Type = GbaEventType.EnterHBlank,
             CycleDue = 1006u, //hblank start cycle
             EventAction = ppu.EnterHBlank
         });
@@ -54,7 +55,7 @@ public sealed class GbaMachine
     public static GbaMachine Create(GbaMachineOptions options)
     {
         var eventHandler = new GbaEventHandler();
-        var memory = new GbaMemory(options.SaveDirectory ?? string.Empty);
+        var memory = new GbaMemory(options.SaveDirectory ?? string.Empty, eventHandler);
         var interrupts = new InterruptController(memory);
         var keypad = new KeypadState(memory, interrupts);
         var timers = new TimerController(interrupts);
@@ -153,7 +154,7 @@ public sealed class GbaMachine
             //cpuWatch.Stop();
 
             //dmaWatch.Start();
-            if (Dma.HasPendingImmediate) Dma.RunImmediateDma(Bus);
+            //if (Dma.HasPendingImmediate) Dma.RunImmediateDma(Bus);
             //dmaWatch.Stop();
 
             //timerWatch.Start();
@@ -163,7 +164,10 @@ public sealed class GbaMachine
             //ppuWatch.Start();
             //Ppu.Step(instructionCycles, Bus);
             //ppuWatch.Stop();
-            RunScheduledEvents();
+            if (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
+            {
+                RunScheduledEvents();
+            }
 
             //consumed += instructionCycles;
             //iterations += 1;

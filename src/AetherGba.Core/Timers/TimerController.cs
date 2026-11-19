@@ -1,31 +1,21 @@
 using System.Runtime.CompilerServices;
 using AetherGba.Core.Common;
 using AetherGba.Core.Interrupts;
+using AetherGba.Core.Memory;
 
 namespace AetherGba.Core.Timers;
 
 public sealed class TimerController
 {
-    private readonly GbaEventHandler _eventHandler = new(); //TODO
+    private readonly GbaEventHandler _eventHandler;
     private readonly InterruptController _interrupts;
 
-    private ulong _currentCycle;
-    private ulong _nextTimerOverflow = ulong.MaxValue;
     private readonly TimerState[] _timers = new TimerState[4];
 
-    public TimerController(InterruptController interrupts)
+    public TimerController(InterruptController interrupts, GbaEventHandler eventHandler)
     {
         _interrupts = interrupts;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Advance(int cycles)
-    {
-        _currentCycle += (uint)cycles;
-        if (_currentCycle >= _nextTimerOverflow)
-        {
-            ProcessTimerOverflows();
-        }
+        _eventHandler = eventHandler;
     }
 
     public ushort ReadCounter(int index)
@@ -72,7 +62,7 @@ public sealed class TimerController
             timer.Cascade = newCascade;
             timer.PrescalerShift = newPrescalerShift;
             timer.CounterSnapshot = timer.Reload;
-            timer.SnapshotCycle = _currentCycle;
+            timer.SnapshotCycle = _eventHandler.CurrentCycle;
 
             SetNextTimerOverflowCycle(ref timer);
             overflowScheduleChanged = true;
@@ -80,7 +70,7 @@ public sealed class TimerController
         else if (wasEnabled && !setEnabled) //Turn Timer Off
         {
             timer.CounterSnapshot = GetCurrentCounter(ref timer);
-            timer.SnapshotCycle = _currentCycle;
+            timer.SnapshotCycle = _eventHandler.CurrentCycle;
             timer.Enabled = false;
             timer.Cascade = newCascade;
             timer.PrescalerShift = newPrescalerShift;
@@ -95,7 +85,7 @@ public sealed class TimerController
             {
                 //Counter does not change but start timing from current globalCycle
                 timer.CounterSnapshot = GetCurrentCounter(ref timer);
-                timer.SnapshotCycle = _currentCycle;
+                timer.SnapshotCycle = _eventHandler.CurrentCycle;
             }
 
             timer.Cascade = newCascade;
@@ -136,19 +126,19 @@ public sealed class TimerController
             return timer.CounterSnapshot;
         }
 
-        ulong elapsedCycles = _currentCycle - timer.SnapshotCycle; //num cycles since snapshot taken
+        ulong elapsedCycles = _eventHandler.CurrentCycle - timer.SnapshotCycle; //num cycles since snapshot taken
         ulong ticks = elapsedCycles >> timer.PrescalerShift; // elapsed / prescalerVal (2PowPrescalerShift) gives Ticks
 
         return (ushort)(timer.CounterSnapshot + ticks);
     }
 
-    private void ProcessTimerOverflows()
+    private void ProcessTimerOverflows(GbaBus bus = null)
     {
         for (int i = 0; i < 4; i++)
         {
             ref TimerState timer = ref _timers[i];
 
-            if (!timer.Enabled || timer.Cascade || timer.NextOverflowCycle > _currentCycle)
+            if (!timer.Enabled || timer.Cascade || timer.NextOverflowCycle > _eventHandler.CurrentCycle)
             {
                 continue;
             }
@@ -163,7 +153,7 @@ public sealed class TimerController
 
         ulong termCycles = (0x10000ul - timer.Reload) << timer.PrescalerShift; // timerTerm * PrescalerVal(cycles per increment)(2PowPrescaler) = totalCycles from start to overflow
 
-        ulong additionalOverflows = (_currentCycle - timer.NextOverflowCycle) / termCycles; //num overflows to apply on top of implied first overflow
+        ulong additionalOverflows = (_eventHandler.CurrentCycle - timer.NextOverflowCycle) / termCycles; //num overflows to apply on top of implied first overflow
         ulong finalOverflowCycle = timer.NextOverflowCycle + (additionalOverflows * termCycles); //cycle that the final handled overflow occurred
 
         timer.CounterSnapshot = timer.Reload;
@@ -235,15 +225,16 @@ public sealed class TimerController
                 next = timer.NextOverflowCycle;
             }
         }
-        _nextTimerOverflow = next;
 
-        if (next == ulong.MaxValue)
+        _eventHandler.CancelEventByType(GbaEventType.TimerOverflow);
+        if (next != ulong.MaxValue)
         {
-            _eventHandler.CancelEventByType(GbaEventType.TimerOverflow);
-        }
-        else
-        {
-            _eventHandler.RescheduleEventByType(GbaEventType.TimerOverflow, next);
+            _eventHandler.AddScheduledEvent(new GbaEvent
+            {
+                Type = GbaEventType.TimerOverflow,
+                CycleDue = next,
+                EventAction = ProcessTimerOverflows
+            });
         }
     }
 }

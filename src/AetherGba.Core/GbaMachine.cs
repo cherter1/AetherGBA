@@ -17,7 +17,7 @@ public sealed class GbaMachine
     private Arm7Tdmi Cpu { get; }
     public GbaBus Bus { get; }
     private Ppu Ppu { get; }
-    private TimerController Timers { get; }
+    public TimerController Timers { get; }
     private DmaController Dma { get; }
     public InterruptController Interrupts { get; }
     public KeypadState Keypad { get; }
@@ -58,7 +58,7 @@ public sealed class GbaMachine
         var memory = new GbaMemory(options.SaveDirectory ?? string.Empty, eventHandler);
         var interrupts = new InterruptController(memory);
         var keypad = new KeypadState(memory, interrupts);
-        var timers = new TimerController(interrupts);
+        var timers = new TimerController(interrupts, eventHandler);
         memory.Io.ConnectTimerController(timers);
         memory.Io.ConnectInterruptController(interrupts);
         var dma = new DmaController(interrupts, memory);
@@ -139,44 +139,16 @@ public sealed class GbaMachine
     public void RunFrame()
     {
         Ppu.FrameReady = false;
-        //var iterations = 0;
-        //var consumed = 0;
-        //var cpuWatch = new Stopwatch();
-        //var dmaWatch = new Stopwatch();
-        //var timerWatch = new Stopwatch();
-        //var ppuWatch = new Stopwatch();
-        //while (consumed < cycles)
         while (!Ppu.FrameReady)
         {
-            //cpuWatch.Start();
             var instructionCycles = Cpu.Step();
             EventHandler.CurrentCycle += (uint)instructionCycles;
-            //cpuWatch.Stop();
 
-            //dmaWatch.Start();
-            //if (Dma.HasPendingImmediate) Dma.RunImmediateDma(Bus);
-            //dmaWatch.Stop();
-
-            //timerWatch.Start();
-            Timers.Advance(instructionCycles);
-            //timerWatch.Stop();
-
-            //ppuWatch.Start();
-            //Ppu.Step(instructionCycles, Bus);
-            //ppuWatch.Stop();
             if (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
             {
                 RunScheduledEvents();
             }
-
-            //consumed += instructionCycles;
-            //iterations += 1;
         }
-        //Console.WriteLine($"{iterations} iterations completed");
-        //Console.WriteLine($"{cpuWatch.Elapsed.TotalMilliseconds} ms in CPU");
-        //Console.WriteLine($"{dmaWatch.Elapsed.TotalMilliseconds} ms in DMA");
-        //Console.WriteLine($"{timerWatch.Elapsed.TotalMilliseconds} ms in timers");
-        //Console.WriteLine($"{ppuWatch.Elapsed.TotalMilliseconds} ms in ppu");
     }
 
     private void RunScheduledEvents()

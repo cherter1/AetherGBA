@@ -99,12 +99,6 @@ while (running)
         machine.RunFrame();
 
         /*
-        fixed (ushort* pixels = machine.FrameBuffer.Pixels)
-        {
-            SDL.SDL_UpdateTexture(texture, null, pixels, 240 * 2);
-        }
-        */
-        /*
         SDL.SDL_UpdateTexture(texture, null, machine.FrameBuffer._pix, 240 * 2);
 
         SDL.SDL_RenderClear(renderer);

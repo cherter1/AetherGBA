@@ -10,7 +10,7 @@ public sealed class GbaEventHandler
     public ulong CurrentCycle;
     public ulong NextEventCycle = ulong.MaxValue;
 
-    private readonly GbaEvent[] _eventStack = new GbaEvent[64]; //TODO: change type and ArraySize
+    private readonly GbaEvent[] _eventStack = new GbaEvent[7]; //TODO: change type and ArraySize
     private int _eventStackPointer;
 
     public GbaEvent Pop()
@@ -20,24 +20,29 @@ public sealed class GbaEventHandler
         return ev;
     }
 
-    public void RescheduleEventByType(GbaEventType eventType, ulong cycleDue)
-    {
-        var foundIdx = -1;
-        for (int i = 0; i < _eventStackPointer; i++)
-        {
-            if (_eventStack[i].Type == eventType)
-            {
-                //found
-                foundIdx = i;
-                break;
-            }
-        }
-        return;
-    }
-
     public void CancelEventByType(GbaEventType eventType)
     {
-        return;
+        var foundIdx = -1;
+        for (int i = 1; i <= _eventStackPointer; i++)
+        {
+            if (_eventStack[i].Type != eventType)
+            {
+                continue;
+            }
+
+            foundIdx = i;
+            break;
+        }
+
+        if (foundIdx == -1) return; //nothing to remove
+
+        for (int i = foundIdx; i < _eventStackPointer; i++)
+        {
+            _eventStack[i] = _eventStack[i + 1];
+        }
+
+        _eventStackPointer--;
+        NextEventCycle = _eventStack[_eventStackPointer].CycleDue;
     }
 
     public void AddScheduledEvent(GbaEvent eventType)

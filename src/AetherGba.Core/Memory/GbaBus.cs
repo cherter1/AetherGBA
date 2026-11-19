@@ -201,7 +201,46 @@ public sealed class GbaBus(GbaMemory memory)
         }
     }
 
+    private static readonly int[] _accessCycles = new int[256 * 6];
+
+    public  void InitAccessCycles()
+    {
+        for (int region = 0; region < 256; region++)
+        {
+            uint address = (uint)region << 24;
+            int start = region * 6;
+
+            _accessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl: 0);
+            _accessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl: 0);
+            _accessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl: 0);
+            _accessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl: 0);
+            _accessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl: 0);
+            _accessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl: 0);
+        }
+    }
+
+    public static void HydrateAccessCycles(ushort waitControl)
+    {
+        for (int region = 8; region < 16; region++)
+        {
+            uint address = (uint)region << 24;
+            int start = region * 6;
+
+            _accessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl);
+            _accessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl);
+            _accessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl);
+            _accessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl);
+            _accessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl);
+            _accessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl);
+        }
+    }
+
     public int GetCpuAccessCycles(uint address, AccessWidth width, bool sequential)
+    {
+        int index = (int)(address >> 24) * 6 + (sequential ? 3 : 0) + (int)width;
+        return _accessCycles[index];
+    }
+    private static int CalculateCpuAccessCycles(uint address, AccessWidth width, bool sequential, ushort waitControl)
     {
         return (int)(address >> 24) switch
         {
@@ -212,31 +251,31 @@ public sealed class GbaBus(GbaMemory memory)
             0x05 => width == AccessWidth.Word ? 2 : 1, //Palette RAM
             0x06 => width == AccessWidth.Word ? 2 : 1, //VRAM
             0x07 => 1, //OAM
-            0x08 or 0x09 => GetGamePakRomCycles(waitState: 0, width, sequential),
-            0x0A or 0x0B => GetGamePakRomCycles(waitState: 1, width, sequential),
-            0x0C or 0x0D => GetGamePakRomCycles(waitState: 2, width, sequential),
-            0x0E or 0x0F => GetSramCycles(width), //SRAM
+            0x08 or 0x09 => GetGamePakRomCycles(waitState: 0, width, sequential, waitControl),
+            0x0A or 0x0B => GetGamePakRomCycles(waitState: 1, width, sequential, waitControl),
+            0x0C or 0x0D => GetGamePakRomCycles(waitState: 2, width, sequential, waitControl),
+            0x0E or 0x0F => GetSramCycles(width, waitControl), //SRAM
             _ => 1
         };
     }
 
-    public int GetGamePakRomCycles(int waitState, AccessWidth width, bool sequential)
+    private static int GetGamePakRomCycles(int waitState, AccessWidth width, bool sequential, ushort waitControl)
     {
         int first;
         int second;
         switch (waitState)
         {
             case 0:
-                first = DecodeFirstAccess((memory.Io.REG_WAITCNT >> 2) & 0b11);
-                second = ((memory.Io.REG_WAITCNT >> 4) & 1) == 0 ? 2 : 1;
+                first = DecodeFirstAccess((waitControl >> 2) & 0b11);
+                second = ((waitControl >> 4) & 1) == 0 ? 2 : 1;
                 break;
             case 1:
-                first = DecodeFirstAccess((memory.Io.REG_WAITCNT >> 5) & 0b11);
-                second = ((memory.Io.REG_WAITCNT >> 7) & 1) == 0 ? 4 : 1;
+                first = DecodeFirstAccess((waitControl >> 5) & 0b11);
+                second = ((waitControl >> 7) & 1) == 0 ? 4 : 1;
                 break;
             case 2:
-                first = DecodeFirstAccess((memory.Io.REG_WAITCNT >> 8) & 0b11);
-                second = ((memory.Io.REG_WAITCNT >> 10) & 1) == 0 ? 8 : 1;
+                first = DecodeFirstAccess((waitControl >> 8) & 0b11);
+                second = ((waitControl >> 10) & 1) == 0 ? 8 : 1;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(waitState));
@@ -252,9 +291,9 @@ public sealed class GbaBus(GbaMemory memory)
         };
     }
 
-    public int GetSramCycles(AccessWidth width)
+    private static int GetSramCycles(AccessWidth width, ushort waitControl)
     {
-        var cycles = DecodeFirstAccess(memory.Io.REG_WAITCNT & 0b11);
+        var cycles = DecodeFirstAccess(waitControl & 0b11);
         return width switch
         {
             AccessWidth.Byte => cycles,
@@ -272,7 +311,7 @@ public sealed class GbaBus(GbaMemory memory)
             1 => 3,
             2 => 2,
             3 => 8,
-            _ => throw new ArgumentOutOfRangeException(nameof(value)),
+            _ => throw new ArgumentOutOfRangeException(nameof(value))
         };
     }
 }

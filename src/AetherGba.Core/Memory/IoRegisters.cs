@@ -565,6 +565,7 @@ public sealed class IoRegisters
             #region Cartridge and System Control
             case 0x04000204:
                 REG_WAITCNT = (ushort)(value & 0x7FFF);
+                GbaBus.HydrateAccessCycles(REG_WAITCNT);
                 break;
             #endregion
             default:

@@ -130,6 +130,7 @@ public sealed class GbaMachine
 
         bus.LoadBios(BiosImage.LoadOptional(options.BiosPath));
         var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge, eventHandler);
+        bus.InitAccessCycles();
         machine.Reset();
         return machine;
     }
@@ -144,19 +145,11 @@ public sealed class GbaMachine
             var instructionCycles = Cpu.Step();
             EventHandler.CurrentCycle += (uint)instructionCycles;
 
-            if (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
+            while (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
             {
-                RunScheduledEvents();
+                var eventDue = EventHandler.Pop();
+                eventDue.EventAction(Bus);
             }
-        }
-    }
-
-    private void RunScheduledEvents()
-    {
-        while (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
-        {
-            var eventDue = EventHandler.Pop();
-            eventDue.EventAction(Bus);
         }
     }
 }

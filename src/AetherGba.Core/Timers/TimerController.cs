@@ -56,52 +56,58 @@ public sealed class TimerController
         timer.IrqEnabled = (value & 0x40) != 0; //bit 6 IRQ
 
         bool overflowScheduleChanged = false;
-        if (!wasEnabled && setEnabled) //Turn Timer On
+        switch (wasEnabled)
         {
-            timer.Enabled = true;
-            timer.Cascade = newCascade;
-            timer.PrescalerShift = newPrescalerShift;
-            timer.CounterSnapshot = timer.Reload;
-            timer.SnapshotCycle = _eventHandler.CurrentCycle;
-
-            SetNextTimerOverflowCycle(ref timer);
-            overflowScheduleChanged = true;
-        }
-        else if (wasEnabled && !setEnabled) //Turn Timer Off
-        {
-            timer.CounterSnapshot = GetCurrentCounter(ref timer);
-            timer.SnapshotCycle = _eventHandler.CurrentCycle;
-            timer.Enabled = false;
-            timer.Cascade = newCascade;
-            timer.PrescalerShift = newPrescalerShift;
-            timer.NextOverflowCycle = ulong.MaxValue;
-
-            overflowScheduleChanged = true;
-        }
-        else if (wasEnabled) //timer stays enabled
-        {
-            bool timingChanged = oldCascade != newCascade || timer.PrescalerShift != newPrescalerShift;
-            if (timingChanged)
-            {
-                //Counter does not change but start timing from current globalCycle
-                timer.CounterSnapshot = GetCurrentCounter(ref timer);
+            //Turn Timer On
+            case false when setEnabled:
+                timer.Enabled = true;
+                timer.Cascade = newCascade;
+                timer.PrescalerShift = newPrescalerShift;
+                timer.CounterSnapshot = timer.Reload;
                 timer.SnapshotCycle = _eventHandler.CurrentCycle;
-            }
 
-            timer.Cascade = newCascade;
-            timer.PrescalerShift = newPrescalerShift;
-
-            if (timingChanged)
-            {
                 SetNextTimerOverflowCycle(ref timer);
                 overflowScheduleChanged = true;
-            }
-        }
-        else //timer stays disabled
-        {
-            timer.Cascade = newCascade;
-            timer.PrescalerShift = newPrescalerShift;
-            timer.NextOverflowCycle = ulong.MaxValue;
+                break;
+            //Turn Timer Off
+            case true when !setEnabled:
+                timer.CounterSnapshot = GetCurrentCounter(ref timer);
+                timer.SnapshotCycle = _eventHandler.CurrentCycle;
+                timer.Enabled = false;
+                timer.Cascade = newCascade;
+                timer.PrescalerShift = newPrescalerShift;
+                timer.NextOverflowCycle = ulong.MaxValue;
+
+                overflowScheduleChanged = true;
+                break;
+            //timer stays enabled
+            case true:
+                {
+                    bool timingChanged = oldCascade != newCascade || timer.PrescalerShift != newPrescalerShift;
+                    if (timingChanged)
+                    {
+                        //Counter does not change but start timing from current globalCycle
+                        timer.CounterSnapshot = GetCurrentCounter(ref timer);
+                        timer.SnapshotCycle = _eventHandler.CurrentCycle;
+                    }
+
+                    timer.Cascade = newCascade;
+                    timer.PrescalerShift = newPrescalerShift;
+
+                    if (timingChanged)
+                    {
+                        SetNextTimerOverflowCycle(ref timer);
+                        overflowScheduleChanged = true;
+                    }
+
+                    break;
+                }
+            //timer stays disabled
+            default:
+                timer.Cascade = newCascade;
+                timer.PrescalerShift = newPrescalerShift;
+                timer.NextOverflowCycle = ulong.MaxValue;
+                break;
         }
 
         if (overflowScheduleChanged) RecalculateNextTimerOverflow();

@@ -9,7 +9,7 @@ using AetherGba.Core.Video.Sprites;
 
 namespace AetherGba.Core.Video;
 
-public sealed class Ppu
+public sealed partial class Ppu
 {
     private const int ScreenWidth = 240;
     private const int ScreenHeight = 160;
@@ -33,65 +33,14 @@ public sealed class Ppu
 
     public FrameBuffer FrameBuffer { get; }
 
-    //private int _scanlineCycle;
-    private int _cyclesUntilBoundary;
-    private bool _inHBlank;
-
-    public void Step(int cycles, GbaBus bus)
-    {
-        while (cycles >= _cyclesUntilBoundary)
-        {
-            cycles -= _cyclesUntilBoundary;
-            if (_inHBlank)
-            {
-                _inHBlank = false;
-                _cyclesUntilBoundary = HBlankStartCycle;
-                EndScanline(bus);
-            }
-            else
-            {
-                _inHBlank = true;
-                _cyclesUntilBoundary = CyclesPerScanline - HBlankStartCycle;
-                EnterHBlank(bus);
-            }
-            //if is in HBlank then cycle boundary is start of next scanline otherwise its in the start of HBlank
-            /*
-            int nextBoundary = _scanlineCycle >= HBlankStartCycle ? CyclesPerScanline : HBlankStartCycle;
-            int cyclesUntilBoundary = nextBoundary - _scanlineCycle;
-            int consumed = Math.Min(cycles, cyclesUntilBoundary);
-
-            _scanlineCycle += consumed;
-            cycles -= consumed;
-
-            if (_scanlineCycle != nextBoundary)
-            {
-                continue; //continue til hblank start
-            }
-
-            if (nextBoundary == HBlankStartCycle)
-            {
-                EnterHBlank(bus); // enter hblank, trigger dma, interrupt, and renderScanLine
-            }
-            else
-            {
-                EndScanline(bus); // leave hblank, update vcount, enter vblank when appropriate
-            }
-            */
-        }
-
-        _cyclesUntilBoundary -= cycles;
-    }
-
     public void EnterHBlank(GbaBus bus)
     {
-        
         _eventHandler.AddScheduledEvent(new GbaEvent
         {
             Type = GbaEventType.EndScanline,
             CycleDue = _eventHandler.CurrentCycle + (CyclesPerScanline - HBlankStartCycle),
             EventAction = EndScanline
         });
-        
         //_memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
         _memory.Io.REG_DISPSTAT |= 0b10;
 

@@ -201,21 +201,21 @@ public sealed class GbaBus(GbaMemory memory)
         }
     }
 
-    private static readonly int[] _accessCycles = new int[256 * 6];
+    private static readonly int[] AccessCycles = new int[256 * 6];
 
-    public  void InitAccessCycles()
+    public static void InitAccessCycles()
     {
         for (int region = 0; region < 256; region++)
         {
             uint address = (uint)region << 24;
             int start = region * 6;
 
-            _accessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl: 0);
-            _accessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl: 0);
-            _accessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl: 0);
-            _accessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl: 0);
-            _accessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl: 0);
-            _accessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl: 0);
+            AccessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl: 0);
+            AccessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl: 0);
+            AccessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl: 0);
+            AccessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl: 0);
+            AccessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl: 0);
+            AccessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl: 0);
         }
     }
 
@@ -226,19 +226,19 @@ public sealed class GbaBus(GbaMemory memory)
             uint address = (uint)region << 24;
             int start = region * 6;
 
-            _accessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl);
-            _accessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl);
-            _accessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl);
-            _accessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl);
-            _accessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl);
-            _accessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl);
+            AccessCycles[start] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: true, waitControl);
+            AccessCycles[start + 1] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: true, waitControl);
+            AccessCycles[start + 2] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: true, waitControl);
+            AccessCycles[start + 3] = CalculateCpuAccessCycles(address, AccessWidth.Byte, sequential: false, waitControl);
+            AccessCycles[start + 4] = CalculateCpuAccessCycles(address, AccessWidth.Halfword, sequential: false, waitControl);
+            AccessCycles[start + 5] = CalculateCpuAccessCycles(address, AccessWidth.Word, sequential: false, waitControl);
         }
     }
 
     public int GetCpuAccessCycles(uint address, AccessWidth width, bool sequential)
     {
         int index = (int)(address >> 24) * 6 + (sequential ? 3 : 0) + (int)width;
-        return _accessCycles[index];
+        return AccessCycles[index];
     }
     private static int CalculateCpuAccessCycles(uint address, AccessWidth width, bool sequential, ushort waitControl)
     {

@@ -4,22 +4,23 @@ public struct SpriteInfo
 {
     public bool IsAffine;
 
-    public bool IsDisabled; //reg
-    public bool IsDoubleSize; //aff
+    public bool IsDisabled; //reg   \
+    public bool IsDoubleSize; //aff /
 
-    public bool IsSinglePalette; //reg
-    public byte Priority; //reg
-    public byte PaletteNumber;
-    public SpriteMode Mode;
-    public byte ShapeSize;
+    public bool Is8Bpp; //reg aff
+    public byte Priority; //reg aff
+    public byte PaletteNumber; //reg aff
+    public SpriteMode Mode; //reg aff
+    public byte ShapeSize; //reg aff
     
     //cleanup later maybe
-    public byte XTiles; //reg
-    public byte XCoord; //reg
-    public byte YTiles; //reg
-    public byte YCoord; //reg
+    public byte XTiles; //reg aff
+    public byte XCoord; //reg aff
+    public byte YTiles; //reg aff
+    public byte YCoord; //reg aff
     public bool VFlip; //reg
-    public bool HFlip;
+    public bool HFlip; //reg
     //div 2 if single palette \/
-    public short StartTileNumber; //reg
+    public short StartTileNumber; //reg aff
+    public byte AffineGroup; //aff
 }

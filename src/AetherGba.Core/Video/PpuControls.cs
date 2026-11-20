@@ -16,7 +16,7 @@ public sealed partial class Ppu
             *(ushort*)(_oam + rawOffset) = value;
         }
         var spriteIndex = rawOffset >> 3;
-        var attrNum =  (rawOffset & 7) >> 1;
+        var attrNum = (rawOffset & 7) >> 1;
 
         if (attrNum == 3) return; //TODO: handle affine info for multiple sprites
 

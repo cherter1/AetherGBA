@@ -133,7 +133,7 @@ public sealed partial class Ppu
 
     private void RenderScanLine(int scanLine)
     {
-        return;
+        //return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
         if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
         //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
@@ -1085,7 +1085,7 @@ public sealed partial class Ppu
                 var affattr2 = new ObjAttribute2(attr2Value);
 
                 var rotationalSprite = new ScanlineSpriteInfo(affattr2.TileNumber, isSinglePalette, affattr2.PaletteNumber,
-                    relativeY, affattr2.Priority, affxTiles, affattr1.XCoord, attr0.ObjMode, doubleSized, true, pA, pB,
+                    relativeY, affattr2.Priority, affxTiles, affattr1.XCoord, (byte)attr0.ObjMode, doubleSized, true, pA, pB,
                     pC, pD, affyTiles);
 
                 if (attr0.ObjMode == 2) //obj window
@@ -1152,7 +1152,7 @@ public sealed partial class Ppu
             }
 
             var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, isSinglePalette, attr2.PaletteNumber,
-                yPixelOffset, attr2.Priority, xTiles, attr1.XCoord, attr0.ObjMode, attr1.HorizontalMirrored, false, 0,
+                yPixelOffset, attr2.Priority, xTiles, attr1.XCoord, (byte)attr0.ObjMode, attr1.HorizontalMirrored, false, 0,
                 0, 0, 0, 0);
 
             if (attr0.ObjMode == 2) //obj window
@@ -1168,39 +1168,107 @@ public sealed partial class Ppu
         return count;
     }
 
-    private void GetSpritesForScanline(int y)
+    private int GetScanlineVisibleSpritesNEW(int y, Span<ScanlineSpriteInfo> sprites)
     {
-        for (int i = 0; i < 128; i++)
+        int count = 0;
+
+        for (int i = 0; i < 128; i++) //loop runs for sprites 0-127
         {
             ref readonly var sprite = ref _spriteInfo[i];
+            if (sprite is { IsAffine: false, IsDisabled: true })
+            {
+                continue; //disabled but only if not r/s obj otherwise its IsDoubleSize
+            }
 
-            //disabled but only if not r/s obj otherwise its IsDoubleSize
-            if (sprite is { IsAffine: false, IsDisabled: true }) continue;
+            if (sprite.IsAffine)
+            {
+                var rotateParamGroup = sprite.AffineGroup;
+                var paStartOffset = 0x6 + (rotateParamGroup * 0x20);
+                //TODO: AffineGroup Cache
+                short pA = 1; // (short)Read16(in oam, paStartOffset);
+                short pB = 1; //(short)Read16(in oam, paStartOffset + 8);
+                short pC = 1; //(short)Read16(in oam, paStartOffset + 16);
+                short pD = 1; //(short)Read16(in oam, paStartOffset + 24);
 
-            if (sprite.IsAffine) return; //TODO: temp do aff later
+                int spriteCanvasHeight = sprite.YTiles << (sprite.IsDoubleSize ? 4 : 3); //mul 8 or double
 
+                int sY = sprite.YCoord;
+                if (sY + spriteCanvasHeight > 256)
+                {
+                    sY -= 256; //Y wrapping
+                }
+
+                var canvasY = y - sY;
+                if ((uint)canvasY >= (uint)spriteCanvasHeight) continue; //not in Y range
+
+                int relativeY = canvasY - (spriteCanvasHeight >> 1);
+
+                var rotationalSprite = new ScanlineSpriteInfo(sprite.StartTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
+                    relativeY, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.IsDoubleSize, true, pA, pB,
+                    pC, pD, sprite.YTiles);
+
+                if (sprite.Mode == SpriteMode.ObjectWindow) //obj window
+                {
+                    RasterizeObjWindowSprite(in rotationalSprite, _memory.Io.REG_DISPCNT);
+                    continue;
+                }
+
+                sprites[count++] = rotationalSprite;
+                continue;
+            }
+
+            //only * 8 for 8bpp mode in 4bpp mode its * 4 since each byte represents 2 pix of a tile
             int spriteY = sprite.YCoord;
-            var canvasHeight = sprite.YTiles << 3; // * 8 in 8bpp mode see old comment TODO
+            var canvasHeight = sprite.YTiles << 3; //mul 8
             if (spriteY + canvasHeight > 256)
             {
-                spriteY -= 256;
+                spriteY -= 256; //Y wrap around screen
             }
 
             int spriteYPos = y - spriteY;
             bool objYRange = (uint)spriteYPos < (uint)canvasHeight;
             if (!objYRange) continue;
 
-            var currentYTile = spriteYPos >> 3;
-            var currentYPixel = spriteYPos & 7;
-
+            var currentYTile = spriteYPos >> 3; //div 8
+            var currentYPixel = spriteYPos & 7; //mod 8
             if (sprite.VFlip)
             {
                 currentYTile = sprite.YTiles - currentYTile;
                 currentYPixel = 7 - currentYPixel;
             }
 
-            var yPixelOffset = currentYPixel << (sprite.IsSinglePalette ? 3 : 2);
+            var yPixelOffset = currentYPixel * 4; //mul 4(4bppMode) for pixel inside tile offset
+            var startTileNumber = sprite.StartTileNumber;
+            var twoDMatrixSize = 32;
+
+            if (sprite.Is8Bpp)
+            {
+                startTileNumber /= 2;
+                yPixelOffset *= 2; //mul 2 (8 total bc already mul 4 above) in 8bpp mode because each byte is a pixel
+                twoDMatrixSize = 16;
+            }
+
+            int tileOffset = (_memory.Io.REG_DISPCNT & 0x40) != 0 //bit 6 set then 1d char mapping
+                ? currentYTile * sprite.XTiles //bit 6 set then 1d char mapping
+                : currentYTile * twoDMatrixSize; //bit 6 clear 2d character mapping
+
+            int scanlineStartMapTileNumber = startTileNumber + tileOffset;
+
+            var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
+                yPixelOffset, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.HFlip, false, 0,
+                0, 0, 0, 0);
+
+            if (sprite.Mode == SpriteMode.ObjectWindow) //obj window
+            {
+                RasterizeObjWindowSprite(in regSprite, _memory.Io.REG_DISPCNT);
+                continue;
+            }
+
+            //add to list for display reg sprites
+            sprites[count++] = regSprite;
         }
+
+        return count;
     }
 
     private readonly byte[] _objectWindowMask = new byte[ScreenWidth];

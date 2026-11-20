@@ -1168,6 +1168,41 @@ public sealed partial class Ppu
         return count;
     }
 
+    private void GetSpritesForScanline(int y)
+    {
+        for (int i = 0; i < 128; i++)
+        {
+            ref readonly var sprite = ref _spriteInfo[i];
+
+            //disabled but only if not r/s obj otherwise its IsDoubleSize
+            if (sprite is { IsAffine: false, IsDisabled: true }) continue;
+
+            if (sprite.IsAffine) return; //TODO: temp do aff later
+
+            int spriteY = sprite.YCoord;
+            var canvasHeight = sprite.YTiles << 3; // * 8 in 8bpp mode see old comment TODO
+            if (spriteY + canvasHeight > 256)
+            {
+                spriteY -= 256;
+            }
+
+            int spriteYPos = y - spriteY;
+            bool objYRange = (uint)spriteYPos < (uint)canvasHeight;
+            if (!objYRange) continue;
+
+            var currentYTile = spriteYPos >> 3;
+            var currentYPixel = spriteYPos & 7;
+
+            if (sprite.VFlip)
+            {
+                currentYTile = sprite.YTiles - currentYTile;
+                currentYPixel = 7 - currentYPixel;
+            }
+
+            var yPixelOffset = currentYPixel << (sprite.IsSinglePalette ? 3 : 2);
+        }
+    }
+
     private readonly byte[] _objectWindowMask = new byte[ScreenWidth];
     private void RasterizeObjWindowSprite(in ScanlineSpriteInfo sprite, ushort displayControl)
     {

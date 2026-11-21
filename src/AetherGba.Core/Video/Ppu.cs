@@ -9,7 +9,7 @@ using AetherGba.Core.Video.Sprites;
 
 namespace AetherGba.Core.Video;
 
-public sealed class Ppu
+public sealed partial class Ppu
 {
     private const int ScreenWidth = 240;
     private const int ScreenHeight = 160;
@@ -20,57 +20,37 @@ public sealed class Ppu
     private readonly InterruptController _interrupts;
     private readonly DmaController _dma;
     private readonly GbaMemory _memory;
+    private readonly GbaEventHandler _eventHandler;
 
-    public Ppu(InterruptController interrupts, DmaController dma, GbaMemory memory)
+    public Ppu(InterruptController interrupts, DmaController dma, GbaMemory memory, GbaEventHandler eventHandler)
     {
         _interrupts = interrupts;
         _memory = memory;
         _dma = dma;
+        _eventHandler = eventHandler;
         FrameBuffer = new FrameBuffer(ScreenWidth, ScreenHeight);
     }
 
     public FrameBuffer FrameBuffer { get; }
 
-    private int _scanlineCycle;
-
-    public void Step(int cycles, GbaBus bus)
+    public void EnterHBlank(GbaBus bus)
     {
-        while (cycles > 0)
+        _eventHandler.AddScheduledEvent(new GbaEvent
         {
-            //if is in HBlank then cycle boundary is start of next scanline otherwise its in the start of HBlank
-            int nextBoundary = _scanlineCycle >= HBlankStartCycle ? CyclesPerScanline : HBlankStartCycle;
-            int cyclesUntilBoundary = nextBoundary - _scanlineCycle;
-            int consumed = Math.Min(cycles, cyclesUntilBoundary);
-
-            _scanlineCycle += consumed;
-            cycles -= consumed;
-
-            if (_scanlineCycle != nextBoundary)
-            {
-                continue; //continue til hblank start
-            }
-
-            if (nextBoundary == HBlankStartCycle)
-            {
-                EnterHBlank(bus); // enter hblank, trigger dma, interrupt, and renderScanLine
-            }
-            else
-            {
-                EndScanline(bus); // leave hblank, update vcount, enter vblank when appropriate
-            }
-        }
-    }
-
-    private void EnterHBlank(GbaBus bus)
-    {
-        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
+            Type = GbaEventType.EndScanline,
+            CycleDue = _eventHandler.CurrentCycle + (CyclesPerScanline - HBlankStartCycle),
+            EventAction = EndScanline
+        });
+        //_memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, true); //set hblank
+        _memory.Io.REG_DISPSTAT |= 0b10;
 
         if (_memory.Io.REG_VCOUNT < ScreenHeight)
         {
             _dma.RunDmas(DmaTimingType.Hblank, bus);
         }
 
-        if (BitUtils.IsBitSet(_memory.Io.REG_VCOUNT, 4)) // hlbank irq enabled
+        if ((_memory.Io.REG_DISPSTAT & 0x10) == 0x10) // hlbank irq enabled bit 4
+        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
         {
             _interrupts.Request(InterruptType.HBlank);
         }
@@ -84,9 +64,17 @@ public sealed class Ppu
     public bool FrameReady { get; set; }
     private void EndScanline(GbaBus bus)
     {
+        
+        _eventHandler.AddScheduledEvent(new GbaEvent
+        {
+            Type = GbaEventType.EnterHBlank,
+            CycleDue = _eventHandler.CurrentCycle + HBlankStartCycle,
+            EventAction = EnterHBlank
+        });
+        
         _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 1, false); // leave hblank unset bit
 
-        _scanlineCycle = 0;
+        //_scanlineCycle = 0;
 
         int nextLine = _memory.Io.REG_VCOUNT + 1;
 
@@ -133,7 +121,7 @@ public sealed class Ppu
         int compareValue = (dispStat >> 8) & 0xFF;
         bool wasMatching = BitUtils.IsBitSet(dispStat, 2); //vcount triggered status
         bool isMatching = _memory.Io.REG_VCOUNT == compareValue; //trigger if line trigger from DISPSTAT equals vcount reg
-        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(_memory.Io.REG_DISPSTAT, 2, isMatching); //set based on if line trigger matching
+        _memory.Io.REG_DISPSTAT = (ushort)BitUtils.SetBit(dispStat, 2, isMatching); //set based on if line trigger matching
 
         if (!wasMatching &&
             isMatching &&
@@ -145,10 +133,14 @@ public sealed class Ppu
 
     private void RenderScanLine(int scanLine)
     {
+        //return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
-        if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
+        if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
+        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
         {
-            modeBits = 0xff;
+            var paletteRam = _memory.PaletteRam.AsSpan(0, 2);
+            var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8)); //backdrop color is set by zero index of palette
+            FrameBuffer.FillScanline(scanLine, backDropColor);
         }
 
         switch (modeBits)
@@ -170,11 +162,6 @@ public sealed class Ppu
                 break;
             case 5: //bitmap based mode
                 RenderMode5(scanLine);
-                break;
-            default:
-                //should only be used when forceBlank bit is set in DisplayControl register
-                var backDropColor = (ushort)(_memory.PaletteRam[0] | (_memory.PaletteRam[1] << 8)); //backdrop color is set by zero index of palette
-                FrameBuffer.FillScanline(scanLine, backDropColor);
                 break;
         }
     }
@@ -261,13 +248,7 @@ public sealed class Ppu
                 }
 
                 var isSinglePalette = bgScanlineInfo[bgIdx].IsSinglePalette;
-                var paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
-                    tileMapStartOffset: bgScanlineInfo[bgIdx].TileMapStartOffset,
-                    xTiles: bgScanlineInfo[bgIdx].XTiles,
-                    tileY: bgScanlineInfo[bgIdx].CurrentYTile,
-                    pixelYInTile: bgScanlineInfo[bgIdx].PixelYInTile,
-                    isSinglePalette,
-                    tileDataStartOffset: bgScanlineInfo[bgIdx].TileDataStartOffset);
+                var paletteIndex = RenderTiledTextBackground(in vram, x, in bgScanlineInfo[bgIdx], hofsTable[bgIdx]);
 
                 if (paletteIndex == 0)
                 {
@@ -521,11 +502,12 @@ public sealed class Ppu
         return objPaletteIndex;
     }
 
-    private static int RenderTiledTextBackground(in ReadOnlySpan<byte> vram, int x, ushort hofs, int tileMapStartOffset,
-        int xTiles, int tileY, int pixelYInTile, bool isSinglePalette, int tileDataStartOffset)
+    private static int RenderTiledTextBackground(in ReadOnlySpan<byte> vram, int x, in TextBackgroundScanlineInfo bgInfo, ushort hofs)
     {
+        int tileMapStartOffset = bgInfo.TileMapStartOffset;
+        int pixelYInTile = bgInfo.PixelYInTile;
         var bgXStartOffset = x + hofs;
-        if (xTiles > 32 && ((bgXStartOffset >> 8) & 1) != 0) // startOffset greater than pixels per map or SE length across AND xTiles > 32, if its 32 mirror the single X SE
+        if (bgInfo.XTiles > 32 && ((bgXStartOffset >> 8) & 1) != 0) // startOffset greater than pixels per map or SE length across AND xTiles > 32, if its 32 mirror the single X SE
         {
             tileMapStartOffset += 0x800; //move startOffset to next SE(map) start offset
         }
@@ -534,7 +516,7 @@ public sealed class Ppu
         var tileX = bgXStartOffset >> 3; // div 8 to count tiles from offset
         var pixelXInTile = bgXStartOffset & 7; // modulo 8 for pixel 0-7 on x axis
 
-        var tileMapIndex = tileY * 32 + tileX; //tileY * 32 + tileX
+        var tileMapIndex = bgInfo.CurrentYTile * 32 + tileX; //tileY * 32 + tileX
         var tileMapEntryOffset = tileMapStartOffset + tileMapIndex * 2; //tileMapStartOffset + mapIndex * mapEntrySize
         var tileMapEntry = Read16(in vram, tileMapEntryOffset);
 
@@ -544,17 +526,17 @@ public sealed class Ppu
         if (vFlip) pixelYInTile = 7 - pixelYInTile;
 
         int paletteIndex;
-        if (isSinglePalette) //8bpp mode
+        if (bgInfo.IsSinglePalette) //8bpp mode
         {
             var tileIndex = tileMapEntry & 0x03ff;
-            var currentTileOffset = tileDataStartOffset + tileIndex * 0x40; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
+            var currentTileOffset = bgInfo.TileDataStartOffset + tileIndex * 0x40; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
             var currentPixelOffset = currentTileOffset + (pixelYInTile * 8) + pixelXInTile;
             paletteIndex = vram[currentPixelOffset];
         }
         else //4bpp mode
         {
             var tileIndex = tileMapEntry & 0x03ff;
-            var currentTileOffset = tileDataStartOffset + tileIndex * 0x20; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
+            var currentTileOffset = bgInfo.TileDataStartOffset + tileIndex * 0x20; //tileDataStartOffset + (tileIndex * sizeof Tile(bytes))
             var currentPixelOffset = currentTileOffset + (pixelYInTile * 4) + (pixelXInTile >> 1); //YPixel * 4 bc 2 pixels per byte in 8pixel row XPixel /2 for same reason
             paletteIndex = (pixelXInTile & 1) == 0 // mod by 2 if even Index take bits 0-3 else take bits 4-7
                 ? vram[currentPixelOffset] & 0xf
@@ -696,13 +678,7 @@ public sealed class Ppu
                 {
                     //text
                     isSinglePalette = bgScanlineInfos[bgIdx].IsSinglePalette;
-                    paletteIndex = RenderTiledTextBackground(in vram, x, hofsTable[bgIdx],
-                        bgScanlineInfos[bgIdx].TileMapStartOffset,
-                        bgScanlineInfos[bgIdx].XTiles,
-                        bgScanlineInfos[bgIdx].CurrentYTile,
-                        bgScanlineInfos[bgIdx].PixelYInTile,
-                        isSinglePalette,
-                        bgScanlineInfos[bgIdx].TileDataStartOffset);
+                    paletteIndex = RenderTiledTextBackground(in vram, x, in bgScanlineInfos[bgIdx], hofsTable[bgIdx]);
                 }
 
                 if (paletteIndex == 0) continue;
@@ -1109,7 +1085,7 @@ public sealed class Ppu
                 var affattr2 = new ObjAttribute2(attr2Value);
 
                 var rotationalSprite = new ScanlineSpriteInfo(affattr2.TileNumber, isSinglePalette, affattr2.PaletteNumber,
-                    relativeY, affattr2.Priority, affxTiles, affattr1.XCoord, attr0.ObjMode, doubleSized, true, pA, pB,
+                    relativeY, affattr2.Priority, affxTiles, affattr1.XCoord, (byte)attr0.ObjMode, doubleSized, true, pA, pB,
                     pC, pD, affyTiles);
 
                 if (attr0.ObjMode == 2) //obj window
@@ -1176,10 +1152,113 @@ public sealed class Ppu
             }
 
             var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, isSinglePalette, attr2.PaletteNumber,
-                yPixelOffset, attr2.Priority, xTiles, attr1.XCoord, attr0.ObjMode, attr1.HorizontalMirrored, false, 0,
+                yPixelOffset, attr2.Priority, xTiles, attr1.XCoord, (byte)attr0.ObjMode, attr1.HorizontalMirrored, false, 0,
                 0, 0, 0, 0);
 
             if (attr0.ObjMode == 2) //obj window
+            {
+                RasterizeObjWindowSprite(in regSprite, _memory.Io.REG_DISPCNT);
+                continue;
+            }
+
+            //add to list for display reg sprites
+            sprites[count++] = regSprite;
+        }
+
+        return count;
+    }
+
+    private int GetScanlineVisibleSpritesNEW(int y, Span<ScanlineSpriteInfo> sprites)
+    {
+        int count = 0;
+
+        for (int i = 0; i < 128; i++) //loop runs for sprites 0-127
+        {
+            ref readonly var sprite = ref _spriteInfo[i];
+            if (sprite is { IsAffine: false, IsDisabled: true })
+            {
+                continue; //disabled but only if not r/s obj otherwise its IsDoubleSize
+            }
+
+            if (sprite.IsAffine)
+            {
+                var rotateParamGroup = sprite.AffineGroup;
+                var paStartOffset = 0x6 + (rotateParamGroup * 0x20);
+                //TODO: AffineGroup Cache
+                short pA = 1; // (short)Read16(in oam, paStartOffset);
+                short pB = 1; //(short)Read16(in oam, paStartOffset + 8);
+                short pC = 1; //(short)Read16(in oam, paStartOffset + 16);
+                short pD = 1; //(short)Read16(in oam, paStartOffset + 24);
+
+                int spriteCanvasHeight = sprite.YTiles << (sprite.IsDoubleSize ? 4 : 3); //mul 8 or double
+
+                int sY = sprite.YCoord;
+                if (sY + spriteCanvasHeight > 256)
+                {
+                    sY -= 256; //Y wrapping
+                }
+
+                var canvasY = y - sY;
+                if ((uint)canvasY >= (uint)spriteCanvasHeight) continue; //not in Y range
+
+                int relativeY = canvasY - (spriteCanvasHeight >> 1);
+
+                var rotationalSprite = new ScanlineSpriteInfo(sprite.StartTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
+                    relativeY, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.IsDoubleSize, true, pA, pB,
+                    pC, pD, sprite.YTiles);
+
+                if (sprite.Mode == SpriteMode.ObjectWindow) //obj window
+                {
+                    RasterizeObjWindowSprite(in rotationalSprite, _memory.Io.REG_DISPCNT);
+                    continue;
+                }
+
+                sprites[count++] = rotationalSprite;
+                continue;
+            }
+
+            //only * 8 for 8bpp mode in 4bpp mode its * 4 since each byte represents 2 pix of a tile
+            int spriteY = sprite.YCoord;
+            var canvasHeight = sprite.YTiles << 3; //mul 8
+            if (spriteY + canvasHeight > 256)
+            {
+                spriteY -= 256; //Y wrap around screen
+            }
+
+            int spriteYPos = y - spriteY;
+            bool objYRange = (uint)spriteYPos < (uint)canvasHeight;
+            if (!objYRange) continue;
+
+            var currentYTile = spriteYPos >> 3; //div 8
+            var currentYPixel = spriteYPos & 7; //mod 8
+            if (sprite.VFlip)
+            {
+                currentYTile = sprite.YTiles - currentYTile;
+                currentYPixel = 7 - currentYPixel;
+            }
+
+            var yPixelOffset = currentYPixel * 4; //mul 4(4bppMode) for pixel inside tile offset
+            var startTileNumber = sprite.StartTileNumber;
+            var twoDMatrixSize = 32;
+
+            if (sprite.Is8Bpp)
+            {
+                startTileNumber /= 2;
+                yPixelOffset *= 2; //mul 2 (8 total bc already mul 4 above) in 8bpp mode because each byte is a pixel
+                twoDMatrixSize = 16;
+            }
+
+            int tileOffset = (_memory.Io.REG_DISPCNT & 0x40) != 0 //bit 6 set then 1d char mapping
+                ? currentYTile * sprite.XTiles //bit 6 set then 1d char mapping
+                : currentYTile * twoDMatrixSize; //bit 6 clear 2d character mapping
+
+            int scanlineStartMapTileNumber = startTileNumber + tileOffset;
+
+            var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
+                yPixelOffset, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.HFlip, false, 0,
+                0, 0, 0, 0);
+
+            if (sprite.Mode == SpriteMode.ObjectWindow) //obj window
             {
                 RasterizeObjWindowSprite(in regSprite, _memory.Io.REG_DISPCNT);
                 continue;

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using AetherGba.Core.Bios;
+using AetherGba.Core.Common;
 using AetherGba.Core.Cpu;
 using AetherGba.Core.Dma;
 using AetherGba.Core.Input;
@@ -14,14 +15,15 @@ namespace AetherGba.Core;
 public sealed class GbaMachine
 {
     private Arm7Tdmi Cpu { get; }
-    private GbaBus Bus { get; }
+    public GbaBus Bus { get; }
     private Ppu Ppu { get; }
-    private TimerController Timers { get; }
+    public TimerController Timers { get; }
     private DmaController Dma { get; }
     public InterruptController Interrupts { get; }
     public KeypadState Keypad { get; }
     public GbaCartridge? Cartridge { get; }
     public FrameBuffer FrameBuffer => Ppu.FrameBuffer;
+    private GbaEventHandler EventHandler { get; }
 
     private GbaMachine(
         Arm7Tdmi cpu,
@@ -31,7 +33,7 @@ public sealed class GbaMachine
         DmaController dma,
         InterruptController interrupts,
         KeypadState keypad,
-        GbaCartridge? cartridge)
+        GbaCartridge? cartridge, GbaEventHandler eventHandler)
     {
         Cpu = cpu;
         Bus = bus;
@@ -41,19 +43,27 @@ public sealed class GbaMachine
         Interrupts = interrupts;
         Keypad = keypad;
         Cartridge = cartridge;
+        EventHandler = eventHandler;
+        EventHandler.AddScheduledEvent(new GbaEvent
+        {
+            Type = GbaEventType.EnterHBlank,
+            CycleDue = 1006u, //hblank start cycle
+            EventAction = ppu.EnterHBlank
+        });
     }
 
     public static GbaMachine Create(GbaMachineOptions options)
     {
-        var memory = new GbaMemory();
+        var eventHandler = new GbaEventHandler();
+        var memory = new GbaMemory(options.SaveDirectory ?? string.Empty, eventHandler);
         var interrupts = new InterruptController(memory);
         var keypad = new KeypadState(memory, interrupts);
-        var timers = new TimerController(interrupts);
+        var timers = new TimerController(interrupts, eventHandler);
         memory.Io.ConnectTimerController(timers);
         memory.Io.ConnectInterruptController(interrupts);
         var dma = new DmaController(interrupts, memory);
         memory.Io.ConnectDmaController(dma);
-        var ppu = new Ppu(interrupts, dma, memory);
+        var ppu = new Ppu(interrupts, dma, memory, eventHandler);
         var bus = new GbaBus(memory);
         var cpu = new Arm7Tdmi(bus, interrupts);
 
@@ -119,7 +129,8 @@ public sealed class GbaMachine
         }
 
         bus.LoadBios(BiosImage.LoadOptional(options.BiosPath));
-        var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge);
+        var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge, eventHandler);
+        GbaBus.InitAccessCycles();
         machine.Reset();
         return machine;
     }
@@ -129,38 +140,16 @@ public sealed class GbaMachine
     public void RunFrame()
     {
         Ppu.FrameReady = false;
-        //var iterations = 0;
-        //var consumed = 0;
-        //var cpuWatch = new Stopwatch();
-        //var dmaWatch = new Stopwatch();
-        //var timerWatch = new Stopwatch();
-        //var ppuWatch = new Stopwatch();
-        //while (consumed < cycles)
         while (!Ppu.FrameReady)
         {
-            //cpuWatch.Start();
             var instructionCycles = Cpu.Step();
-            //cpuWatch.Stop();
+            EventHandler.CurrentCycle += (uint)instructionCycles;
 
-            //dmaWatch.Start();
-            Dma.RunDmas(DmaTimingType.Immediately, Bus);
-            //dmaWatch.Stop();
-
-            //timerWatch.Start();
-            Timers.Advance(instructionCycles);
-            //timerWatch.Stop();
-
-            //ppuWatch.Start();
-            Ppu.Step(instructionCycles, Bus);
-            //ppuWatch.Stop();
-
-            //consumed += instructionCycles;
-            //iterations += 1;
+            while (EventHandler.CurrentCycle >= EventHandler.NextEventCycle)
+            {
+                var eventDue = EventHandler.Pop();
+                eventDue.EventAction(Bus);
+            }
         }
-        //Console.WriteLine($"{iterations} iterations completed");
-        //Console.WriteLine($"{cpuWatch.Elapsed.TotalMilliseconds} ms in CPU");
-        //Console.WriteLine($"{dmaWatch.Elapsed.TotalMilliseconds} ms in DMA");
-        //Console.WriteLine($"{timerWatch.Elapsed.TotalMilliseconds} ms in timers");
-        //Console.WriteLine($"{ppuWatch.Elapsed.TotalMilliseconds} ms in ppu");
     }
 }

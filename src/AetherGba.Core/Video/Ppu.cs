@@ -1182,13 +1182,7 @@ public sealed partial class Ppu
 
             if (sprite.IsAffine)
             {
-                var rotateParamGroup = sprite.AffineGroup;
-                var paStartOffset = 0x6 + (rotateParamGroup * 0x20);
-                //TODO: AffineGroup Cache
-                short pA = 1; // (short)Read16(in oam, paStartOffset);
-                short pB = 1; //(short)Read16(in oam, paStartOffset + 8);
-                short pC = 1; //(short)Read16(in oam, paStartOffset + 16);
-                short pD = 1; //(short)Read16(in oam, paStartOffset + 24);
+                var affineParams = _affineParameters[sprite.AffineGroup];
 
                 int spriteCanvasHeight = sprite.YTiles << (sprite.IsDoubleSize ? 4 : 3); //mul 8 or double
 
@@ -1204,8 +1198,8 @@ public sealed partial class Ppu
                 int relativeY = canvasY - (spriteCanvasHeight >> 1);
 
                 var rotationalSprite = new ScanlineSpriteInfo(sprite.StartTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
-                    relativeY, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.IsDoubleSize, true, pA, pB,
-                    pC, pD, sprite.YTiles);
+                    relativeY, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.IsDoubleSize, true, affineParams.Pa, affineParams.Pb,
+                    affineParams.Pc, affineParams.Pd, sprite.YTiles);
 
                 if (sprite.Mode == SpriteMode.ObjectWindow) //obj window
                 {
@@ -1237,15 +1231,17 @@ public sealed partial class Ppu
                 currentYPixel = 7 - currentYPixel;
             }
 
-            var yPixelOffset = currentYPixel * 4; //mul 4(4bppMode) for pixel inside tile offset
             var startTileNumber = sprite.StartTileNumber;
-            var twoDMatrixSize = 32;
+            int twoDMatrixSize;
 
             if (sprite.Is8Bpp)
             {
-                startTileNumber /= 2;
-                yPixelOffset *= 2; //mul 2 (8 total bc already mul 4 above) in 8bpp mode because each byte is a pixel
+                startTileNumber >>= 1;
                 twoDMatrixSize = 16;
+            }
+            else
+            {
+                twoDMatrixSize = 32;
             }
 
             int tileOffset = (_memory.Io.REG_DISPCNT & 0x40) != 0 //bit 6 set then 1d char mapping
@@ -1253,6 +1249,7 @@ public sealed partial class Ppu
                 : currentYTile * twoDMatrixSize; //bit 6 clear 2d character mapping
 
             int scanlineStartMapTileNumber = startTileNumber + tileOffset;
+            int yPixelOffset = currentYPixel >> (sprite.Is8Bpp ? 3 : 2); // mul 4 in 4bpp each byte has 2 pixels and 8 in 8bpp since each byte is a pixel
 
             var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
                 yPixelOffset, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.HFlip, false, 0,

@@ -15,7 +15,7 @@ public struct SpriteInfo
     
     //cleanup later maybe
     public byte XTiles; //reg aff
-    public byte XCoord; //reg aff
+    public int XCoord; //reg aff
     public byte YTiles; //reg aff
     public byte YCoord; //reg aff
     public bool VFlip; //reg

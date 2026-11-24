@@ -9,6 +9,51 @@ public sealed partial class Ppu
     private SpriteInfo[] _spriteInfo = new SpriteInfo[128];
     private readonly unsafe byte* _oam = (byte*)Marshal.AllocHGlobal(0x400).ToPointer(); //can only write 16/32
 
+    public unsafe uint ReadOam32Aligned(uint address)
+    {
+        var rawOffset = address & 0x3ff;
+        return *(uint*)(_oam + rawOffset);
+    }
+
+    public unsafe ushort ReadOam16Aligned(uint address)
+    {
+        var rawOffset = address & 0x3ff;
+        return *(ushort*)(_oam + rawOffset);
+    }
+
+    public unsafe byte ReadOam8(uint address)
+    {
+        var rawOffset = address & 0x3ff;
+        return *(_oam + rawOffset);
+    }
+
+    public void WriteOam32Aligned(uint address, uint value)
+    {
+        var rawOffset = address & 0x3ff;
+        unsafe
+        {
+            *(uint*)(_oam + rawOffset) = value;
+        }
+
+        var attrPart = (rawOffset & 7) >> 2; //0 or 1
+        var spriteIndex = rawOffset >> 3;
+        ref var sprite = ref _spriteInfo[spriteIndex];
+
+        var lo = (ushort)(value & 0xffff);
+        var hi = (ushort)(value >> 16);
+        switch (attrPart)
+        {
+            case 0:
+                UpdateAttr0(ref sprite, lo);
+                UpdateAttr1(ref sprite, hi);
+                break;
+            case 1:
+                UpdateAttr2(ref sprite, lo);
+                UpdateAffineParams(rawOffset + 2, (short)hi);
+                break;
+        }
+    }
+
     public void WriteOam16Aligned(uint address, ushort value)
     {
         var rawOffset = address & 0x3ff;
@@ -26,9 +71,15 @@ public sealed partial class Ppu
 
         var spriteIndex = rawOffset >> 3;
         ref var sprite = ref _spriteInfo[spriteIndex];
+        switch (spriteIndex)
+        {
+            case 0: UpdateAttr0(ref sprite, value); break;
+            case 1: UpdateAttr1(ref sprite, value); break;
+            case 2: UpdateAttr2(ref sprite, value); break;
+        }
     }
 
-    private void UpdateAttr0(ref SpriteInfo spriteInfo, ushort value)
+    private static void UpdateAttr0(ref SpriteInfo spriteInfo, ushort value)
     {
         spriteInfo.Is8Bpp = (value & 0x4000) != 0;
         spriteInfo.YCoord = (byte)(value & 0xFF);
@@ -50,7 +101,7 @@ public sealed partial class Ppu
         spriteInfo.YTiles = (byte)yTiles;
     }
 
-    private void UpdateAttr1(ref SpriteInfo spriteInfo, ushort value)
+    private static void UpdateAttr1(ref SpriteInfo spriteInfo, ushort value)
     {
         spriteInfo.XCoord = value & 0x1ff;
         spriteInfo.AffineGroup = (byte)((value >> 9) & 0x1f);
@@ -63,7 +114,7 @@ public sealed partial class Ppu
         spriteInfo.YTiles = (byte)yTiles;
     }
 
-    private void UpdateAttr2(ref SpriteInfo spriteInfo, ushort value)
+    private static void UpdateAttr2(ref SpriteInfo spriteInfo, ushort value)
     {
         spriteInfo.StartTileNumber = (short)(value & 0x3ff);
         spriteInfo.Priority = (byte)((value >> 10) & 0b11);
@@ -82,6 +133,14 @@ public sealed partial class Ppu
             case 1: affineParams.Pb = value; break;
             case 2: affineParams.Pc = value; break;
             case 3: affineParams.Pd = value; break;
+        }
+    }
+
+    private unsafe void InitPpuControlData()
+    {
+        for (int i = 0; i < 0x400; i+=4)
+        {
+            *(uint*)(_oam + i) = 0;
         }
     }
 }

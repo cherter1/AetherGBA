@@ -29,6 +29,7 @@ public sealed partial class Ppu
         _dma = dma;
         _eventHandler = eventHandler;
         FrameBuffer = new FrameBuffer(ScreenWidth, ScreenHeight);
+        InitPpuControlData();
     }
 
     public FrameBuffer FrameBuffer { get; }
@@ -1227,6 +1228,7 @@ public sealed partial class Ppu
             var currentYPixel = spriteYPos & 7; //mod 8
             if (sprite.VFlip)
             {
+                //currentYTile = sprite.YTiles - 1 - currentYTile; //maybe right
                 currentYTile = sprite.YTiles - currentYTile;
                 currentYPixel = 7 - currentYPixel;
             }

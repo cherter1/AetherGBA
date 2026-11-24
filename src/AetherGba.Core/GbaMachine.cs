@@ -64,7 +64,7 @@ public sealed class GbaMachine
         var dma = new DmaController(interrupts, memory);
         memory.Io.ConnectDmaController(dma);
         var ppu = new Ppu(interrupts, dma, memory, eventHandler);
-        var bus = new GbaBus(memory);
+        var bus = new GbaBus(memory, ppu);
         var cpu = new Arm7Tdmi(bus, interrupts);
 
         var cartridge = options.RomPath is { Length: > 0 } romPath && File.Exists(romPath)

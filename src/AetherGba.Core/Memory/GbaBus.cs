@@ -1,11 +1,12 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using AetherGba.Core.Bios;
+using AetherGba.Core.Video;
 using GbaCartridge = AetherGba.Core.Cartridge.Cartridge;
 
 namespace AetherGba.Core.Memory;
 
-public sealed class GbaBus(GbaMemory memory)
+public sealed class GbaBus(GbaMemory memory, Ppu ppu)
 {
     public void LoadBios(BiosImage? bios)
     {

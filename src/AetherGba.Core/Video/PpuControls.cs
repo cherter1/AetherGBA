@@ -71,7 +71,7 @@ public sealed partial class Ppu
 
         var spriteIndex = rawOffset >> 3;
         ref var sprite = ref _spriteInfo[spriteIndex];
-        switch (spriteIndex)
+        switch (attrNum)
         {
             case 0: UpdateAttr0(ref sprite, value); break;
             case 1: UpdateAttr1(ref sprite, value); break;
@@ -81,17 +81,11 @@ public sealed partial class Ppu
 
     private static void UpdateAttr0(ref SpriteInfo spriteInfo, ushort value)
     {
-        spriteInfo.Is8Bpp = (value & 0x4000) != 0;
+        spriteInfo.Is8Bpp = (value & 0x2000) != 0;
         spriteInfo.YCoord = (byte)(value & 0xFF);
         spriteInfo.IsAffine = (value & 0x100) != 0;
-        if (spriteInfo.IsAffine)
-        {
-            spriteInfo.IsDoubleSize = (value & 0x200) != 0;
-        }
-        else
-        {
-            spriteInfo.IsDisabled = (value & 0x200) != 0;
-        }
+        spriteInfo.IsDoubleSize = (value & 0x200) != 0;
+        spriteInfo.IsDisabled = (value & 0x200) != 0;
 
         spriteInfo.Mode = (SpriteMode)((value >> 10) & 0b11);
         spriteInfo.ShapeSize = (byte)((((value >> 14) & 0b11) << 2) | (spriteInfo.ShapeSize & 0b11));
@@ -116,7 +110,7 @@ public sealed partial class Ppu
 
     private static void UpdateAttr2(ref SpriteInfo spriteInfo, ushort value)
     {
-        spriteInfo.StartTileNumber = (short)(value & 0x3ff);
+        spriteInfo.StartTileNumber = (value & 0x3ff);
         spriteInfo.Priority = (byte)((value >> 10) & 0b11);
         spriteInfo.PaletteNumber = (byte)((value >> 12) & 0xf);
     }

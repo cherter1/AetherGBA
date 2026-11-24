@@ -21,6 +21,6 @@ public struct SpriteInfo
     public bool VFlip; //reg
     public bool HFlip; //reg
     //div 2 if single palette \/
-    public short StartTileNumber; //reg aff
+    public int StartTileNumber; //reg aff
     public byte AffineGroup; //aff
 }

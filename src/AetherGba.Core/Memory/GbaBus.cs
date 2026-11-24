@@ -32,6 +32,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         {
             MemoryRegion.Unused => 0,
             MemoryRegion.Io => memory.Io.ReadIo32Aligned(aligned),
+            MemoryRegion.Oam => ppu.ReadOam32Aligned(aligned),
             _ => BinaryPrimitives.ReadUInt32LittleEndian(buffer)
         };
 
@@ -48,6 +49,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         {
             MemoryRegion.Unused => 0,
             MemoryRegion.Io => memory.Io.ReadIo16Aligned(address),
+            MemoryRegion.Oam => ppu.ReadOam16Aligned(address),
             _ => (ushort)((buffer[1] << 8) | buffer[0])
         };
     }
@@ -76,6 +78,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             MemoryRegion.Unused => 0,
             MemoryRegion.Io => memory.Io.ReadIo8(address),
             MemoryRegion.Sram => memory.Flash.Read8(address),
+            MemoryRegion.Oam => ppu.ReadOam8(address),
             _ => buffer[0]
         };
     }
@@ -91,6 +94,9 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 return;
             case MemoryRegion.Io:
                 memory.Io.WriteIo32Aligned(address, value);
+                break;
+            case MemoryRegion.Oam:
+                ppu.WriteOam32Aligned(address, value);
                 break;
             default:
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer, value);
@@ -109,6 +115,9 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             case MemoryRegion.Io:
                 memory.Io.WriteIo16Aligned(address, value);
                 break;
+            case MemoryRegion.Oam:
+                ppu.WriteOam16Aligned(address, value);
+                break;
             default:
                 buffer[1] = (byte)(value >> 8);
                 buffer[0] = (byte)value;
@@ -121,7 +130,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         var region = ResolveRegion(address, 1, out var buffer);
         switch (region)
         {
-            case MemoryRegion.Bios or MemoryRegion.Rom or MemoryRegion.Unused:
+            case MemoryRegion.Bios or MemoryRegion.Rom or MemoryRegion.Unused or MemoryRegion.Oam:
                 return;
             case MemoryRegion.Io:
                 memory.Io.WriteIo8(address, value);
@@ -168,9 +177,9 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 buffer = memory.Vram.AsSpan(offset, size);
                 return MemoryRegion.Vram;
             case 0x07:
-                offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
-                //offset = (int)((address - 0x07000000) % (uint)memory.Oam.Length);
-                buffer = memory.Oam.AsSpan(offset, size);
+                //offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
+                //buffer = memory.Oam.AsSpan(offset, size);
+                buffer = [];
                 return MemoryRegion.Oam;
             case 0x08:
             case 0x09:

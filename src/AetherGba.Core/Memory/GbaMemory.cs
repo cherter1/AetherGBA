@@ -22,7 +22,7 @@ public sealed class GbaMemory
     public readonly byte[] Iwram = new byte[0x8000]; //32KB
     public readonly byte[] PaletteRam = new byte[0x400]; //1KB
     public readonly byte[] Vram = new byte[0x18000]; //96KB
-    public readonly byte[] Oam = new byte[0x400]; //1KB
+    //public readonly byte[] Oam = new byte[0x400]; //1KB
     public byte[] Rom = [];
     public readonly byte[] Sram = new byte[0x10000]; //64KB
     public readonly FlashMemory Flash; //128KB

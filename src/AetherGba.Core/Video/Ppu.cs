@@ -51,7 +51,7 @@ public sealed partial class Ppu
         }
 
         if ((_memory.Io.REG_DISPSTAT & 0x10) == 0x10) // hlbank irq enabled bit 4
-        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
+            //if (BitUtils.IsBitSet(_memory.Io.REG_DISPSTAT, 4)) // hlbank irq enabled
         {
             _interrupts.Request(InterruptType.HBlank);
         }
@@ -137,7 +137,7 @@ public sealed partial class Ppu
         //return;
         var modeBits = _memory.Io.REG_DISPCNT & 0x7; //bits 0-2
         if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
-        //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
+            //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
         {
             var paletteRam = _memory.PaletteRam.AsSpan(0, 2);
             var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8)); //backdrop color is set by zero index of palette
@@ -1036,142 +1036,6 @@ public sealed partial class Ppu
     private int GetScanlineVisibleSprites(int y, Span<ScanlineSpriteInfo> sprites)
     {
         int count = 0;
-        ReadOnlySpan<byte> oam = _memory.Oam.AsSpan(0, 0x400); //Explicit slice with full Length of OAM to help JIT eliminate bounds checks
-
-        for (int oamAttrOffset = 0; oamAttrOffset < 1016; oamAttrOffset += 8) //loop runs for sprites 0-127
-        {
-            var attr0Value = Read16(in oam, oamAttrOffset);
-            var attr0 = new ObjAttribute0(attr0Value);
-            var isSinglePalette = attr0.IsSinglePalette; //just here for later so I remember
-            if (attr0 is { IsRotationScaling: false, IsDisabled: true })
-            {
-                continue; //disabled but only if not r/s obj otherwise its IsDoubleSize
-            }
-
-            var attr1Value = Read16(in oam, oamAttrOffset + 2);
-            var attr2Value = Read16(in oam, oamAttrOffset + 4);
-            if (attr0.IsRotationScaling)
-            {
-                var rotateParamGroup = (attr1Value >> 9) & 0x1f;
-                var paStartOffset = 0x6 + (rotateParamGroup * 0x20);
-                var pA = (short)Read16(in oam, paStartOffset);
-                var pB = (short)Read16(in oam, paStartOffset + 8);
-                var pC = (short)Read16(in oam, paStartOffset + 16);
-                var pD = (short)Read16(in oam, paStartOffset + 24);
-                var doubleSized = attr0.IsDisabled;
-                var affattr1 = new ObjAttribute1(attr1Value);
-
-                var affshapeSize = (attr0.ObjShape << 2) | affattr1.ObjSize; //low two bits attr1 size
-                SpriteHelpers.GetSpriteSizeTiles(affshapeSize, out int affxTiles, out int affyTiles);
-
-                int spriteCanvasHeight = affyTiles * 8;
-                if (doubleSized)
-                {
-                    spriteCanvasHeight *= 2;
-                }
-
-                int sY = attr0.YCoord;
-                if (sY + spriteCanvasHeight > 256)
-                {
-                    sY -= 256; //Y wrapping
-                }
-
-                var canvasY = y - sY;
-                if ((uint)canvasY >= (uint)spriteCanvasHeight) //not in Y range
-                {
-                    continue;
-                }
-
-                int relativeY = canvasY - spriteCanvasHeight / 2;
-                var affattr2 = new ObjAttribute2(attr2Value);
-
-                var rotationalSprite = new ScanlineSpriteInfo(affattr2.TileNumber, isSinglePalette, affattr2.PaletteNumber,
-                    relativeY, affattr2.Priority, affxTiles, affattr1.XCoord, (byte)attr0.ObjMode, doubleSized, true, pA, pB,
-                    pC, pD, affyTiles);
-
-                if (attr0.ObjMode == 2) //obj window
-                {
-                    RasterizeObjWindowSprite(in rotationalSprite, _memory.Io.REG_DISPCNT);
-                    continue;
-                }
-
-                sprites[count++] = rotationalSprite;
-                continue;
-            }
-
-            var attr1 = new ObjAttribute1(attr1Value);
-
-            var shapeSize = (attr0.ObjShape << 2) | attr1.ObjSize; //low two bits attr1 size
-            SpriteHelpers.GetSpriteSizeTiles(shapeSize, out int xTiles, out int yTiles);
-
-            //only * 8 for 8bpp mode in 4bpp mode its * 4 since each byte represents 2 pix of a tile
-            var spriteY = attr0.YCoord;
-            var canvasHeight = yTiles * 8;
-            if (spriteY + canvasHeight > 256)
-            {
-                spriteY -= 256; //Y wrap around screen
-            }
-
-            int spriteYPos = y - spriteY;
-            bool objYRange = (uint)spriteYPos < (uint)canvasHeight;
-
-            if (!objYRange)
-            {
-                continue;
-            }
-
-            //var attr2Value = Read16(oam, oamAttrOffset + 4);
-            var attr2 = new ObjAttribute2(attr2Value);
-
-            var currentYTile = spriteYPos >> 3; //div 8
-            var currentYPixel = spriteYPos & 7; //mod 8
-            if (attr1.VerticalMirrored)
-            {
-                currentYTile = yTiles - currentYTile;
-                currentYPixel = 7 - currentYPixel;
-            }
-
-            var yPixelOffset = currentYPixel * 4; //mul 4(4bppMode) for pixel inside tile offset
-            var startTileNumber = attr2.TileNumber;
-            var twoDMatrixSize = 32;
-
-            if (isSinglePalette)
-            {
-                startTileNumber /= 2;
-                yPixelOffset *= 2; //mul 2 (8 total bc already mul 4 above) in 8bpp mode because each byte is a pixel
-                twoDMatrixSize = 16;
-            }
-
-            int scanlineStartMapTileNumber;
-            if ((_memory.Io.REG_DISPCNT & 0x40) == 0x40) //bit 6 set then 1d char mapping
-            {
-                scanlineStartMapTileNumber = startTileNumber + (currentYTile * xTiles);
-            }
-            else //bit 6 clear 2d character mapping
-            {
-                scanlineStartMapTileNumber = startTileNumber + (currentYTile * twoDMatrixSize);
-            }
-
-            var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, isSinglePalette, attr2.PaletteNumber,
-                yPixelOffset, attr2.Priority, xTiles, attr1.XCoord, (byte)attr0.ObjMode, attr1.HorizontalMirrored, false, 0,
-                0, 0, 0, 0);
-
-            if (attr0.ObjMode == 2) //obj window
-            {
-                RasterizeObjWindowSprite(in regSprite, _memory.Io.REG_DISPCNT);
-                continue;
-            }
-
-            //add to list for display reg sprites
-            sprites[count++] = regSprite;
-        }
-
-        return count;
-    }
-
-    private int GetScanlineVisibleSpritesNEW(int y, Span<ScanlineSpriteInfo> sprites)
-    {
-        int count = 0;
 
         for (int i = 0; i < 128; i++) //loop runs for sprites 0-127
         {
@@ -1251,7 +1115,7 @@ public sealed partial class Ppu
                 : currentYTile * twoDMatrixSize; //bit 6 clear 2d character mapping
 
             int scanlineStartMapTileNumber = startTileNumber + tileOffset;
-            int yPixelOffset = currentYPixel >> (sprite.Is8Bpp ? 3 : 2); // mul 4 in 4bpp each byte has 2 pixels and 8 in 8bpp since each byte is a pixel
+            int yPixelOffset = currentYPixel << (sprite.Is8Bpp ? 3 : 2); // mul 4 in 4bpp each byte has 2 pixels and 8 in 8bpp since each byte is a pixel
 
             var regSprite = new ScanlineSpriteInfo(scanlineStartMapTileNumber, sprite.Is8Bpp, sprite.PaletteNumber,
                 yPixelOffset, sprite.Priority, sprite.XTiles, sprite.XCoord, (byte)sprite.Mode, sprite.HFlip, false, 0,

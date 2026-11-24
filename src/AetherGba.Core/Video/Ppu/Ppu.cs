@@ -7,7 +7,7 @@ using AetherGba.Core.Video.Backgrounds;
 using AetherGba.Core.Video.SpecialEffects;
 using AetherGba.Core.Video.Sprites;
 
-namespace AetherGba.Core.Video;
+namespace AetherGba.Core.Video.Ppu;
 
 public sealed partial class Ppu
 {
@@ -28,8 +28,7 @@ public sealed partial class Ppu
         _memory = memory;
         _dma = dma;
         _eventHandler = eventHandler;
-        FrameBuffer = new FrameBuffer(ScreenWidth, ScreenHeight);
-        InitPpuControlData();
+        FrameBuffer = new FrameBuffer();
     }
 
     public FrameBuffer FrameBuffer { get; }

@@ -8,6 +8,7 @@ using AetherGba.Core.Interrupts;
 using AetherGba.Core.Memory;
 using AetherGba.Core.Timers;
 using AetherGba.Core.Video;
+using AetherGba.Core.Video.Ppu;
 using GbaCartridge = AetherGba.Core.Cartridge.Cartridge;
 
 namespace AetherGba.Core;

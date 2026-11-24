@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using AetherGba.Core.Bios;
-using AetherGba.Core.Video;
+using AetherGba.Core.Video.Ppu;
 using GbaCartridge = AetherGba.Core.Cartridge.Cartridge;
 
 namespace AetherGba.Core.Memory;

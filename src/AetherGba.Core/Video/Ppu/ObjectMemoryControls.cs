@@ -1,13 +1,13 @@
 using System.Runtime.InteropServices;
 using AetherGba.Core.Video.Sprites;
 
-namespace AetherGba.Core.Video;
+namespace AetherGba.Core.Video.Ppu;
 
 public sealed partial class Ppu
 {
     private AffineParams[] _affineParameters = new AffineParams[32];
     private SpriteInfo[] _spriteInfo = new SpriteInfo[128];
-    private readonly unsafe byte* _oam = (byte*)Marshal.AllocHGlobal(0x400).ToPointer(); //can only write 16/32
+    private readonly unsafe byte* _oam = (byte*)NativeMemory.AllocZeroed(0x400); //can only write 16/32
 
     public unsafe uint ReadOam32Aligned(uint address)
     {
@@ -127,14 +127,6 @@ public sealed partial class Ppu
             case 1: affineParams.Pb = value; break;
             case 2: affineParams.Pc = value; break;
             case 3: affineParams.Pd = value; break;
-        }
-    }
-
-    private unsafe void InitPpuControlData()
-    {
-        for (int i = 0; i < 0x400; i+=4)
-        {
-            *(uint*)(_oam + i) = 0;
         }
     }
 }

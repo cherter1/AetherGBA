@@ -84,11 +84,10 @@ public sealed partial class Ppu
         spriteInfo.Is8Bpp = (value & 0x2000) != 0;
         spriteInfo.YCoord = (byte)(value & 0xFF);
         spriteInfo.IsAffine = (value & 0x100) != 0;
-        spriteInfo.IsDoubleSize = (value & 0x200) != 0;
-        spriteInfo.IsDisabled = (value & 0x200) != 0;
+        spriteInfo.IsDisabled = (value & 0x200) != 0; //also updates IsDoubleSize
 
         spriteInfo.Mode = (SpriteMode)((value >> 10) & 0b11);
-        spriteInfo.ShapeSize = (byte)((((value >> 14) & 0b11) << 2) | (spriteInfo.ShapeSize & 0b11));
+        spriteInfo.ShapeSize = (byte)(((value >> 14) << 2) | (spriteInfo.ShapeSize & 0b11));
 
         SpriteHelpers.GetSpriteSizeTiles(spriteInfo.ShapeSize, out int xTiles, out int yTiles);
         spriteInfo.XTiles = (byte)xTiles;
@@ -97,12 +96,12 @@ public sealed partial class Ppu
 
     private static void UpdateAttr1(ref SpriteInfo spriteInfo, ushort value)
     {
-        spriteInfo.XCoord = value & 0x1ff;
+        spriteInfo.XCoord = (short)(value & 0x1ff);
         spriteInfo.AffineGroup = (byte)((value >> 9) & 0x1f);
         spriteInfo.HFlip = (value & 0x1000) != 0;
         spriteInfo.VFlip = (value & 0x2000) != 0;
 
-        spriteInfo.ShapeSize = (byte)((spriteInfo.ShapeSize & 0b1100) | ((value >> 14) & 0b11));
+        spriteInfo.ShapeSize = (byte)((spriteInfo.ShapeSize & 0b1100) | (value >> 14));
         SpriteHelpers.GetSpriteSizeTiles(spriteInfo.ShapeSize, out int xTiles, out int yTiles);
         spriteInfo.XTiles = (byte)xTiles;
         spriteInfo.YTiles = (byte)yTiles;
@@ -110,7 +109,7 @@ public sealed partial class Ppu
 
     private static void UpdateAttr2(ref SpriteInfo spriteInfo, ushort value)
     {
-        spriteInfo.StartTileNumber = (value & 0x3ff);
+        spriteInfo.StartTileNumber = (short)(value & 0x3ff);
         spriteInfo.Priority = (byte)((value >> 10) & 0b11);
         spriteInfo.PaletteNumber = (byte)((value >> 12) & 0xf);
     }

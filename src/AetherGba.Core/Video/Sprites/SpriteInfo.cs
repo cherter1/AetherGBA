@@ -1,26 +1,27 @@
+using System.Runtime.InteropServices;
+
 namespace AetherGba.Core.Video.Sprites;
 
+[StructLayout(LayoutKind.Explicit)]
 public struct SpriteInfo
 {
-    public bool IsAffine;
+    [FieldOffset(0)] public short StartTileNumber; //reg aff
+    [FieldOffset(2)] public short XCoord; //reg aff
 
-    public bool IsDisabled; //reg   \
-    public bool IsDoubleSize; //aff /
+    [FieldOffset(4)] public bool IsAffine;
 
-    public bool Is8Bpp; //reg aff
-    public byte Priority; //reg aff
-    public byte PaletteNumber; //reg aff
-    public SpriteMode Mode; //reg aff
-    public byte ShapeSize; //reg aff
-    
-    //cleanup later maybe
-    public byte XTiles; //reg aff
-    public int XCoord; //reg aff
-    public byte YTiles; //reg aff
-    public byte YCoord; //reg aff
-    public bool VFlip; //reg
-    public bool HFlip; //reg
-    //div 2 if single palette \/
-    public int StartTileNumber; //reg aff
-    public byte AffineGroup; //aff
+    [FieldOffset(5)] public bool IsDisabled; //reg   \
+    [FieldOffset(5)] public bool IsDoubleSize; //aff /
+
+    [FieldOffset(6)] public bool Is8Bpp; //reg aff
+    [FieldOffset(7)] public byte Priority; //reg aff
+    [FieldOffset(8)] public byte PaletteNumber; //reg aff
+    [FieldOffset(9)] public SpriteMode Mode; //reg aff
+    [FieldOffset(10)] public byte ShapeSize; //reg aff
+    [FieldOffset(11)] public byte XTiles; //reg aff
+    [FieldOffset(12)] public byte YTiles; //reg aff
+    [FieldOffset(13)] public byte YCoord; //reg aff
+    [FieldOffset(14)] public bool VFlip; //reg
+    [FieldOffset(15)] public bool HFlip; //reg
+    [FieldOffset(16)] public byte AffineGroup; //aff
 }

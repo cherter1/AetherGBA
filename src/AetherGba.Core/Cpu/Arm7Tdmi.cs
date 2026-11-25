@@ -84,6 +84,7 @@ public sealed partial class Arm7Tdmi
     private unsafe void StepThumb()
     {
         var instructionAddress = Registers.ProgramCounter;
+        //Console.WriteLine($"addr: 0x{instructionAddress:x8}");
         var instruction = Bus.ReadThumbInstruction(instructionAddress);
         //var instruction = Bus.Read16(instructionAddress);
         Registers.ProgramCounter = instructionAddress + 2;

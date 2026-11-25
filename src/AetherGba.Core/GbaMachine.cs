@@ -132,6 +132,7 @@ public sealed class GbaMachine
         bus.LoadBios(BiosImage.LoadOptional(options.BiosPath));
         var machine = new GbaMachine(cpu, bus, ppu, timers, dma, interrupts, keypad, cartridge, eventHandler);
         GbaBus.InitAccessCycles();
+        GbaBus.InitMemoryRegions();
         machine.Reset();
         return machine;
     }

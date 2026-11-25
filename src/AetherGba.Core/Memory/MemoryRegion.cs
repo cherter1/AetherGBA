@@ -1,6 +1,6 @@
 namespace AetherGba.Core.Memory;
 
-public enum MemoryRegion
+public enum MemoryRegion : byte
 {
     Unused,
     Bios,
@@ -11,5 +11,7 @@ public enum MemoryRegion
     Vram,
     Oam,
     Rom,
+    RomMirror,
+    RomMirrorTwo,
     Sram
 }

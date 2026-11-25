@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using AetherGba.Core.Bios;
 using AetherGba.Core.Video.Ppu;
 using GbaCartridge = AetherGba.Core.Cartridge.Cartridge;
@@ -21,7 +22,19 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         memory.Flash.FlushSave();
     }
 
-    public void LoadCartridge(GbaCartridge? cartridge) => memory.Rom = cartridge?.RomData ?? [];
+    private const int MaxRomSize = 67108864;
+    public unsafe void LoadCartridge(GbaCartridge? cartridge)
+    {
+        var length = cartridge?.RomData.Length ?? 0;
+        length = Math.Min(length, MaxRomSize);
+        memory.Rom = (byte*)NativeMemory.Alloc((nuint)length);
+        memory.RomLen = length;
+
+        fixed (byte* p = cartridge?.RomData)
+        {
+            NativeMemory.Copy(p, memory.Rom, (nuint)length);
+        }
+    }
 
     public uint Read32(uint address)
     {
@@ -54,7 +67,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         };
     }
 
-    public ushort ReadThumbInstruction(uint address)
+    public unsafe ushort ReadThumbInstruction(uint address)
     {
         var aligned = address & ~1u;
         var gamePakOffset = unchecked(aligned - 0x08000000u);
@@ -62,16 +75,71 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         // less than 32 Mib(max ROM size) offset for any of the 3 ROM replications then take fast path
         if (gamePakOffset >= 0x06000000u)
         {
+            //Console.WriteLine("slow path");
             return Read16(address);
         }
 
-        int offset = (int)(gamePakOffset & 0x01ffffffu); // mod by max rom size for offset
-        var buff = memory.Rom.AsSpan(offset, 2);
-        return (ushort)((buff[1] << 8) | buff[0]);
+        int offset = (int)(gamePakOffset & (memory.RomLen - 1)); // mod by max rom size for offset
+        return *(ushort*)(memory.Rom + offset);
+        return *(ushort*)memory.Rom[offset];
     }
 
-    public byte Read8(uint address)
+    public unsafe byte Read8(uint address)
     {
+        var reg = Regions[address >> 24];
+        byte val;
+        uint offset;
+        switch (reg)
+        {
+            case MemoryRegion.Bios:
+                offset = address & 0x3fff;
+                val = memory.Bios[offset];
+                break;
+            case MemoryRegion.Ewram:
+                offset = address & 0x3ffff;
+                val = memory.Ewram[offset];
+                break;
+            case MemoryRegion.Iwram:
+                offset = address & 0x7fff;
+                val = memory.Iwram[offset];
+                break;
+            case MemoryRegion.Io:
+                val = memory.Io.ReadIo8(address);
+                break;
+            case MemoryRegion.PaletteRam:
+                offset = address & 0x3ff;
+                val = memory.PaletteRam[offset];
+                break;
+            case MemoryRegion.Vram:
+                offset = address & 0x17fff;
+                val = memory.Vram[offset];
+                break;
+            case MemoryRegion.Oam:
+                val = ppu.ReadOam8(address);
+                break;
+            case MemoryRegion.Rom:
+            case MemoryRegion.RomMirror:
+            case MemoryRegion.RomMirrorTwo:
+                uint romLen = (uint)memory.RomLen;
+                uint roffset = address - 0x08000000u;
+                if (roffset >= romLen)
+                {
+                    roffset = romLen == 0 ? 0 : roffset % romLen;
+                }
+                offset = roffset;
+                val = *(memory.Rom + offset);
+                break;
+            case MemoryRegion.Sram:
+                val = memory.Flash.Read8(address); //modify for other saves later
+                break;
+            case MemoryRegion.Unused:
+            default:
+                val = 0;
+                break;
+        }
+        return val;
+
+        /*
         var region = ResolveRegion(address, 1, out var buffer);
         return region switch
         {
@@ -79,13 +147,59 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             MemoryRegion.Io => memory.Io.ReadIo8(address),
             MemoryRegion.Sram => memory.Flash.Read8(address),
             MemoryRegion.Oam => ppu.ReadOam8(address),
+            MemoryRegion.Rom => memory.Rom[2],
             _ => buffer[0]
         };
+        */
     }
 
     public void Write32(uint address, uint value)
     {
-        address &= 0xfffffffc;
+        address &= ~3u;
+        var reg = Regions[address >> 24];
+
+        uint offset;
+        switch (reg)
+        {
+            case MemoryRegion.Ewram:
+                offset = address & 0x3ffff;
+                memory.Ewram[offset + 3] = (byte)(value >> 24);
+                memory.Ewram[offset + 2] = (byte)(value >> 16);
+                memory.Ewram[offset + 1] = (byte)(value >> 8);
+                memory.Ewram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Iwram:
+                offset = address & 0x7fff;
+                memory.Iwram[offset + 3] = (byte)(value >> 24);
+                memory.Iwram[offset + 2] = (byte)(value >> 16);
+                memory.Iwram[offset + 1] = (byte)(value >> 8);
+                memory.Iwram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Io:
+                memory.Io.WriteIo32Aligned(address, value);
+                break;
+            case MemoryRegion.PaletteRam:
+                offset = address & 0x3ff;
+                memory.PaletteRam[offset + 3] = (byte)(value >> 24);
+                memory.PaletteRam[offset + 2] = (byte)(value >> 16);
+                memory.PaletteRam[offset + 1] = (byte)(value >> 8);
+                memory.PaletteRam[offset] = (byte)value;
+                break;
+            case MemoryRegion.Vram:
+                offset = address & 0x17fff;
+                memory.Vram[offset + 3] = (byte)(value >> 24);
+                memory.Vram[offset + 2] = (byte)(value >> 16);
+                memory.Vram[offset + 1] = (byte)(value >> 8);
+                memory.Vram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Oam:
+                ppu.WriteOam32Aligned(address, value);
+                break;
+            case MemoryRegion.Sram:
+                break; //strange behavior
+        }
+
+        /*
         var region = ResolveRegion(address, 4, out var buffer);
 
         switch (region)
@@ -102,11 +216,48 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 BinaryPrimitives.WriteUInt32LittleEndian(buffer, value);
                 break;
         }
+        */
     }
 
     public void Write16(uint address, ushort value)
     {
         address &= ~1u;
+        var reg = Regions[address >> 24];
+
+        uint offset;
+        switch (reg)
+        {
+            case MemoryRegion.Ewram:
+                offset = address & 0x3ffff;
+                memory.Ewram[offset + 1] = (byte)(value >> 8);
+                memory.Ewram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Iwram:
+                offset = address & 0x7fff;
+                memory.Iwram[offset + 1] = (byte)(value >> 8);
+                memory.Iwram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Io:
+                memory.Io.WriteIo16Aligned(address, value);
+                break;
+            case MemoryRegion.PaletteRam:
+                offset = address & 0x3ff;
+                memory.PaletteRam[offset + 1] = (byte)(value >> 8);
+                memory.PaletteRam[offset] = (byte)value;
+                break;
+            case MemoryRegion.Vram:
+                offset = address & 0x17fff;
+                memory.Vram[offset + 1] = (byte)(value >> 8);
+                memory.Vram[offset] = (byte)value;
+                break;
+            case MemoryRegion.Oam:
+                ppu.WriteOam16Aligned(address, value);
+                break;
+            case MemoryRegion.Sram:
+                break; //Strange behavior
+        }
+
+        /*
         var region = ResolveRegion(address, 2, out var buffer);
         switch (region)
         {
@@ -123,10 +274,37 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 buffer[0] = (byte)value;
                 break;
         }
+        */
     }
 
     public void Write8(uint address, byte value)
     {
+        var reg = Regions[address >> 24];
+
+        switch (reg)
+        {
+            case MemoryRegion.Ewram:
+                memory.Ewram[address & 0x3ffff] = value;
+                break;
+            case MemoryRegion.Iwram:
+                memory.Iwram[address & 0x7fff] = value;
+                break;
+            case MemoryRegion.Io:
+                memory.Io.WriteIo8(address, value);
+                break;
+            case MemoryRegion.PaletteRam:
+                var offset = address & 0x3ffe; //mod by length -1 to halfword align
+                memory.PaletteRam[offset] = value;
+                memory.PaletteRam[offset + 1] = value;
+                break;
+            case MemoryRegion.Vram:
+                break; //strange behavior
+            case MemoryRegion.Sram:
+                memory.Flash.Write8(address, value); //mess with later or other save types
+                break;
+        }
+
+        /*
         var region = ResolveRegion(address, 1, out var buffer);
         switch (region)
         {
@@ -142,9 +320,10 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 buffer[0] = value;
                 break;
         }
+        */
     }
 
-    private MemoryRegion ResolveRegion(uint address, int size, out Span<byte> buffer)
+    private unsafe MemoryRegion ResolveRegion(uint address, int size, out Span<byte> buffer)
     {
         int offset;
         switch (address >> 24)
@@ -188,7 +367,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             case 0x0C:
             case 0x0D:
                 
-                uint romLen = (uint)memory.Rom.Length;
+                uint romLen = (uint)memory.RomLen;
                 uint roffset = address - 0x08000000u;
                 if (roffset >= romLen)
                 {
@@ -198,7 +377,8 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 
 
                 //offset = memory.Rom.Length == 0 ? 0 : (int)((address - 0x08000000) % (uint)memory.Rom.Length);
-                buffer = memory.Rom.AsSpan(offset, size);
+                //buffer = memory.Rom.AsSpan(offset, size);
+                buffer = new Span<byte>(memory.Rom + offset, size);
                 return MemoryRegion.Rom;
             case 0x0E:
                 offset = (int)((address - 0x0E000000) % (uint)memory.Sram.Length);
@@ -211,8 +391,30 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         }
     }
 
-    private static readonly int[] AccessCycles = new int[256 * 6];
+    private static readonly MemoryRegion[] Regions = new MemoryRegion[256];
+    public static void InitMemoryRegions()
+    {
+        for (int i = 0; i < Regions.Length; i++)
+        {
+            Regions[i] = i switch
+            {
+                0x00 => MemoryRegion.Bios,
+                0x02 => MemoryRegion.Ewram,
+                0x03 => MemoryRegion.Iwram,
+                0x04 => MemoryRegion.Io,
+                0x05 => MemoryRegion.PaletteRam,
+                0x06 => MemoryRegion.Vram,
+                0x07 => MemoryRegion.Oam,
+                0x08 or 0x09 => MemoryRegion.Rom,
+                0x0a or 0x0b => MemoryRegion.RomMirror,
+                0x0c or 0x0d => MemoryRegion.RomMirrorTwo,
+                0x0e => MemoryRegion.Sram,
+                _ => MemoryRegion.Unused
+            };
+        }
+    }
 
+    private static readonly int[] AccessCycles = new int[256 * 6];
     public static void InitAccessCycles()
     {
         for (int region = 0; region < 256; region++)

@@ -138,9 +138,11 @@ public sealed partial class Ppu
         if ((_memory.Io.REG_DISPSTAT & 0x80) == 0x80) //if bit 7 is set force blank
             //if (BitUtils.IsBitSet(_memory.Io.REG_DISPCNT, 7)) //if bit 7 is set force blank
         {
-            var paletteRam = _memory.PaletteRam.AsSpan(0, 2);
-            var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8)); //backdrop color is set by zero index of palette
-            FrameBuffer.FillScanline(scanLine, backDropColor);
+            unsafe
+            {
+                var backDropColor = *(ushort*)_memory.PaletteRam; //backdrop color is set by zero index of palette
+                FrameBuffer.FillScanline(scanLine, backDropColor);
+            }
         }
 
         switch (modeBits)
@@ -166,7 +168,7 @@ public sealed partial class Ppu
         }
     }
 
-    private void RenderMode0(int y)
+    private unsafe void RenderMode0(int y)
     {
         var displayControl = _memory.Io.REG_DISPCNT;
         var inWin0YRange = SpecialEffectsHelper.TryGetWindowRange(windowNum: 0, y, displayControl,
@@ -213,8 +215,8 @@ public sealed partial class Ppu
         Span<ScanlineSpriteInfo> visibleSprites = spriteBuffer[..spriteCount];
         SortSpriteIndicesByPriority(visibleSprites);
 
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
+        ReadOnlySpan<byte> vram = new(_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
+        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
         for (var x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -582,7 +584,7 @@ public sealed partial class Ppu
         return finalColor;
     }
 
-    private void RenderMode1(int y)
+    private unsafe void RenderMode1(int y)
     {
         if (y == 0)
         {
@@ -627,8 +629,8 @@ public sealed partial class Ppu
         Span<ScanlineSpriteInfo> visibleSprites = spriteBuffer[..spriteCount];
         SortSpriteIndicesByPriority(visibleSprites);
 
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
+        ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
+        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
         for (int x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -770,7 +772,7 @@ public sealed partial class Ppu
         _memory.Io.InternalBg2Y += (short)_memory.Io.REG_BG2PD;
     }
 
-    private void RenderMode2(int y)
+    private unsafe void RenderMode2(int y)
     {
         if (y == 0)
         {
@@ -856,8 +858,8 @@ public sealed partial class Ppu
         Span<ScanlineSpriteInfo> visibleSprites = spriteBuffer[..spriteCount];
         SortSpriteIndicesByPriority(visibleSprites);
 
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
+        ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
+        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
         for (int x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -1134,7 +1136,7 @@ public sealed partial class Ppu
     }
 
     private readonly byte[] _objectWindowMask = new byte[ScreenWidth];
-    private void RasterizeObjWindowSprite(in ScanlineSpriteInfo sprite, ushort displayControl)
+    private unsafe void RasterizeObjWindowSprite(in ScanlineSpriteInfo sprite, ushort displayControl)
     {
         int canvasWidth = sprite.XTiles * 8;
 
@@ -1147,7 +1149,7 @@ public sealed partial class Ppu
 
         int startX = Math.Max(spriteX, 0);
         int endX = Math.Min(spriteX + canvasWidth, ScreenWidth);
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
+        ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000);
         for (int x = startX; x < endX; x++)
         {
             int paletteIndex = sprite.IsAffine
@@ -1167,9 +1169,9 @@ public sealed partial class Ppu
         return (ushort)((memoryRegion[offset + 1] << 8) | memoryRegion[offset]);
     }
 
-    private void RenderMode3(int y)
+    private unsafe void RenderMode3(int y)
     {
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
+        ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000);
         for (var x = 0; x < ScreenWidth; x++)
         {
             var offset = ((y * ScreenWidth) + x) * 2;
@@ -1179,13 +1181,12 @@ public sealed partial class Ppu
         }
     }
 
-    private void RenderMode4(int y)
+    private unsafe void RenderMode4(int y)
     {
         var useFrame1 = (_memory.Io.REG_DISPCNT & 0x10) != 0; //bit 4 of displayControl tells which bitmap to use
         var vram = useFrame1
-            ? _memory.Vram.AsSpan()[0xA000..]
-            : _memory.Vram.AsSpan()[..0xA000];
-        var paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
+            ? new Span<byte>(_memory.Vram + 0xA000, 0x18000 - 0xA000)
+            : new Span<byte>(_memory.Vram, 0xA000);
         var pixelRowOffset = y * ScreenWidth;
         for (var x = 0; x < ScreenWidth; x++)
         {
@@ -1193,18 +1194,17 @@ public sealed partial class Ppu
             var paletteIndex = vram[vramPixelOffset];
             var offset = paletteIndex << 1;
 
-            var color =  (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
+            var color = *(ushort*)(_memory.PaletteRam + offset);
 
             FrameBuffer.SetPixel(x, y, color);
         }
     }
 
-    private void RenderMode5(int y)
+    private unsafe void RenderMode5(int y)
     {
-        var paletteRam = _memory.PaletteRam.AsSpan(0, 0x400);
         if (y > 127) //bitmap is only covering 128 scanLines
         {
-            var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
+            var backDropColor = *(ushort*)_memory.PaletteRam;
             FrameBuffer.FillScanline(y, backDropColor);
             return;
         }
@@ -1212,12 +1212,12 @@ public sealed partial class Ppu
         var useFrame1 = (_memory.Io.REG_DISPCNT & 0x10) != 0; //bit 4 of displayControl tells which bitmap to use
         var startOffset = !useFrame1 ? 0 : 0xA000;
         var pixelRowOffset = y * 160;
-        ReadOnlySpan<byte> vram = _memory.Vram.AsSpan(0, 0x18000);
+        ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000);
         for (int x = 0; x < ScreenWidth; x++)
         {
             if (x > 159) //bitmap is only 160 pixels across
             {
-                var backDropColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
+                var backDropColor = *(ushort*)_memory.PaletteRam;
                 FrameBuffer.SetPixel(x, y, backDropColor);
                 continue;
             }

@@ -9,11 +9,15 @@ namespace AetherGba.Core.Memory;
 
 public sealed class GbaBus(GbaMemory memory, Ppu ppu)
 {
-    public void LoadBios(BiosImage? bios)
+    public unsafe void LoadBios(BiosImage? bios)
     {
         if (bios is not null)
         {
-            Array.Copy(bios.Bytes, memory.Bios, Math.Min(memory.Bios.Length, bios.Bytes.Length));
+            fixed (byte* b = bios.Bytes)
+            {
+                NativeMemory.Copy(b, memory.Bios, (nuint)Math.Min(0x4000, bios.Bytes.Length));
+            }
+            //Array.Copy(bios.Bytes, memory.Bios, Math.Min(memory.Bios.Length, bios.Bytes.Length));
         }
     }
 
@@ -36,35 +40,115 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         }
     }
 
-    public uint Read32(uint address)
+    public unsafe uint Read32(uint address)
     {
         var aligned = address & 0xfffffffc;
-        var region = ResolveRegion(aligned, 4, out var buffer);
+        var reg = Regions[aligned >> 24];
 
-        uint raw = region switch
+        uint val = 0;
+        switch (reg)
         {
-            MemoryRegion.Unused => 0,
-            MemoryRegion.Io => memory.Io.ReadIo32Aligned(aligned),
-            MemoryRegion.Oam => ppu.ReadOam32Aligned(aligned),
-            _ => BinaryPrimitives.ReadUInt32LittleEndian(buffer)
-        };
+            case MemoryRegion.Bios:
+                //var off = (int)(aligned & 0x3fffu);
+                //var buff = memory.Bios.AsSpan(off, 4);
+                //val = BinaryPrimitives.ReadUInt32LittleEndian(buff);
+                val = *(uint*)(memory.Bios + (aligned & 0x3fff));
+                break;
+            case MemoryRegion.Ewram:
+                val = *(uint*)(memory.Ewram + (aligned & 0x3ffff));
+                break;
+            case MemoryRegion.Iwram:
+                val = *(uint*)(memory.Iwram + (aligned & 0x7fff));
+                break;
+            case MemoryRegion.Io:
+                val = memory.Io.ReadIo32Aligned(aligned);
+                break;
+            case MemoryRegion.PaletteRam:
+                val = *(uint*)(memory.PaletteRam + (aligned & 0x3ff));
+                break;
+            case MemoryRegion.Vram:
+                var offset = (aligned - 0x06000000) % 0x18000;
+                val = *(uint*)(memory.Vram + offset);
+                break;
+            case MemoryRegion.Oam:
+                val = ppu.ReadOam32Aligned(aligned);
+                break;
+            case MemoryRegion.Rom:
+            case MemoryRegion.RomMirror:
+            case MemoryRegion.RomMirrorTwo:
+                uint romLen = (uint)memory.RomLen;
+                uint roffset = aligned - 0x08000000u;
+                if (roffset >= romLen)
+                {
+                    roffset = romLen == 0 ? 0 : roffset % romLen;
+                }
+                offset = roffset;
+                //change later could still break if length  0
+                val = *(uint*)(memory.Rom + (int)offset);
+                break;
+            case MemoryRegion.Sram:
+            case MemoryRegion.Unused:
+            default:
+                break;
+        }
 
         return aligned != address
-            ? BitOperations.RotateRight(raw, (int)((address & 3u) * 8))
-            : raw;
+            ? BitOperations.RotateRight(val, (int)((address & 3u) * 8))
+            : val;
     }
 
-    public ushort Read16(uint address)
+    public unsafe ushort Read16(uint address)
     {
         address &= ~1u;
-        var region = ResolveRegion(address, 2, out var buffer);
-        return region switch
+        var reg = Regions[address >> 24];
+
+        ushort val = 0;
+        switch (reg)
         {
-            MemoryRegion.Unused => 0,
-            MemoryRegion.Io => memory.Io.ReadIo16Aligned(address),
-            MemoryRegion.Oam => ppu.ReadOam16Aligned(address),
-            _ => (ushort)((buffer[1] << 8) | buffer[0])
-        };
+            case MemoryRegion.Bios:
+                //var off = (int)(address & 0x3fffu);
+                //var buff = memory.Bios.AsSpan(off, 2);
+                //val = (ushort)((buff[1] << 8) | buff[0]);
+                val = *(ushort*)(memory.Bios + (address & 0x3fff));
+                break;
+            case MemoryRegion.Ewram:
+                val = *(ushort*)(memory.Ewram + (address & 0x3ffff));
+                break;
+            case MemoryRegion.Iwram:
+                val = *(ushort*)(memory.Iwram + (address & 0x7fff));
+                break;
+            case MemoryRegion.Io:
+                val = memory.Io.ReadIo16Aligned(address);
+                break;
+            case MemoryRegion.PaletteRam:
+                val = *(ushort*)(memory.PaletteRam + (address & 0x3ff));
+                break;
+            case MemoryRegion.Vram:
+                var offset = (address - 0x06000000) % 0x18000;
+                val = *(ushort*)(memory.Vram + offset);
+                break;
+            case MemoryRegion.Oam:
+                val = ppu.ReadOam16Aligned(address);
+                break;
+            case MemoryRegion.Rom:
+            case MemoryRegion.RomMirror:
+            case MemoryRegion.RomMirrorTwo:
+                uint romLen = (uint)memory.RomLen;
+                uint roffset = address - 0x08000000u;
+                if (roffset >= romLen)
+                {
+                    roffset = romLen == 0 ? 0 : roffset % romLen;
+                }
+                offset = roffset;
+                val = *(ushort*)(memory.Rom + (int)offset);
+                break;
+            case MemoryRegion.Sram:
+            case MemoryRegion.Unused:
+            default:
+                break;
+        }
+
+        return val;
     }
 
     public unsafe ushort ReadThumbInstruction(uint address)
@@ -75,13 +159,11 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         // less than 32 Mib(max ROM size) offset for any of the 3 ROM replications then take fast path
         if (gamePakOffset >= 0x06000000u)
         {
-            //Console.WriteLine("slow path");
             return Read16(address);
         }
 
         int offset = (int)(gamePakOffset & (memory.RomLen - 1)); // mod by max rom size for offset
         return *(ushort*)(memory.Rom + offset);
-        return *(ushort*)memory.Rom[offset];
     }
 
     public unsafe byte Read8(uint address)
@@ -92,27 +174,23 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         switch (reg)
         {
             case MemoryRegion.Bios:
-                offset = address & 0x3fff;
-                val = memory.Bios[offset];
+                val = memory.Bios[address & 0x3fffu];
                 break;
             case MemoryRegion.Ewram:
-                offset = address & 0x3ffff;
-                val = memory.Ewram[offset];
+                val = *(memory.Ewram + (address & 0x3ffffu));
                 break;
             case MemoryRegion.Iwram:
-                offset = address & 0x7fff;
-                val = memory.Iwram[offset];
+                val = *(memory.Iwram + (address & 0x7fffu));
                 break;
             case MemoryRegion.Io:
                 val = memory.Io.ReadIo8(address);
                 break;
             case MemoryRegion.PaletteRam:
-                offset = address & 0x3ff;
-                val = memory.PaletteRam[offset];
+                val = *(memory.PaletteRam + (address & 0x3ffu));
                 break;
             case MemoryRegion.Vram:
-                offset = address & 0x17fff;
-                val = memory.Vram[offset];
+                offset = (address - 0x06000000) % 0x18000;
+                val = *(memory.Vram + offset);
                 break;
             case MemoryRegion.Oam:
                 val = ppu.ReadOam8(address);
@@ -127,7 +205,7 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                     roffset = romLen == 0 ? 0 : roffset % romLen;
                 }
                 offset = roffset;
-                val = *(memory.Rom + offset);
+                val = *(memory.Rom + (int)offset);
                 break;
             case MemoryRegion.Sram:
                 val = memory.Flash.Read8(address); //modify for other saves later
@@ -138,24 +216,11 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
                 break;
         }
         return val;
-
-        /*
-        var region = ResolveRegion(address, 1, out var buffer);
-        return region switch
-        {
-            MemoryRegion.Unused => 0,
-            MemoryRegion.Io => memory.Io.ReadIo8(address),
-            MemoryRegion.Sram => memory.Flash.Read8(address),
-            MemoryRegion.Oam => ppu.ReadOam8(address),
-            MemoryRegion.Rom => memory.Rom[2],
-            _ => buffer[0]
-        };
-        */
     }
 
-    public void Write32(uint address, uint value)
+    public unsafe void Write32(uint address, uint value)
     {
-        address &= ~3u;
+        address &= 0xfffffffc;
         var reg = Regions[address >> 24];
 
         uint offset;
@@ -163,34 +228,22 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         {
             case MemoryRegion.Ewram:
                 offset = address & 0x3ffff;
-                memory.Ewram[offset + 3] = (byte)(value >> 24);
-                memory.Ewram[offset + 2] = (byte)(value >> 16);
-                memory.Ewram[offset + 1] = (byte)(value >> 8);
-                memory.Ewram[offset] = (byte)value;
+                *(uint*)(memory.Ewram + offset) = value;
                 break;
             case MemoryRegion.Iwram:
                 offset = address & 0x7fff;
-                memory.Iwram[offset + 3] = (byte)(value >> 24);
-                memory.Iwram[offset + 2] = (byte)(value >> 16);
-                memory.Iwram[offset + 1] = (byte)(value >> 8);
-                memory.Iwram[offset] = (byte)value;
+                *(uint*)(memory.Iwram + offset) = value;
                 break;
             case MemoryRegion.Io:
                 memory.Io.WriteIo32Aligned(address, value);
                 break;
             case MemoryRegion.PaletteRam:
                 offset = address & 0x3ff;
-                memory.PaletteRam[offset + 3] = (byte)(value >> 24);
-                memory.PaletteRam[offset + 2] = (byte)(value >> 16);
-                memory.PaletteRam[offset + 1] = (byte)(value >> 8);
-                memory.PaletteRam[offset] = (byte)value;
+                *(uint*)(memory.PaletteRam + offset) = value;
                 break;
             case MemoryRegion.Vram:
-                offset = address & 0x17fff;
-                memory.Vram[offset + 3] = (byte)(value >> 24);
-                memory.Vram[offset + 2] = (byte)(value >> 16);
-                memory.Vram[offset + 1] = (byte)(value >> 8);
-                memory.Vram[offset] = (byte)value;
+                offset = (address - 0x06000000) % 0x18000;
+                *(uint*)(memory.Vram + offset) = value;
                 break;
             case MemoryRegion.Oam:
                 ppu.WriteOam32Aligned(address, value);
@@ -198,28 +251,9 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             case MemoryRegion.Sram:
                 break; //strange behavior
         }
-
-        /*
-        var region = ResolveRegion(address, 4, out var buffer);
-
-        switch (region)
-        {
-            case MemoryRegion.Bios or MemoryRegion.Rom or MemoryRegion.Unused:
-                return;
-            case MemoryRegion.Io:
-                memory.Io.WriteIo32Aligned(address, value);
-                break;
-            case MemoryRegion.Oam:
-                ppu.WriteOam32Aligned(address, value);
-                break;
-            default:
-                BinaryPrimitives.WriteUInt32LittleEndian(buffer, value);
-                break;
-        }
-        */
     }
 
-    public void Write16(uint address, ushort value)
+    public unsafe void Write16(uint address, ushort value)
     {
         address &= ~1u;
         var reg = Regions[address >> 24];
@@ -229,26 +263,22 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
         {
             case MemoryRegion.Ewram:
                 offset = address & 0x3ffff;
-                memory.Ewram[offset + 1] = (byte)(value >> 8);
-                memory.Ewram[offset] = (byte)value;
+                *(ushort*)(memory.Ewram + offset) = value;
                 break;
             case MemoryRegion.Iwram:
                 offset = address & 0x7fff;
-                memory.Iwram[offset + 1] = (byte)(value >> 8);
-                memory.Iwram[offset] = (byte)value;
+                *(ushort*)(memory.Iwram + offset) = value;
                 break;
             case MemoryRegion.Io:
                 memory.Io.WriteIo16Aligned(address, value);
                 break;
             case MemoryRegion.PaletteRam:
                 offset = address & 0x3ff;
-                memory.PaletteRam[offset + 1] = (byte)(value >> 8);
-                memory.PaletteRam[offset] = (byte)value;
+                *(ushort*)(memory.PaletteRam + offset) = value;
                 break;
             case MemoryRegion.Vram:
-                offset = address & 0x17fff;
-                memory.Vram[offset + 1] = (byte)(value >> 8);
-                memory.Vram[offset] = (byte)value;
+                offset = (address - 0x06000000) % 0x18000;
+                *(ushort*)(memory.Vram + offset) = value;
                 break;
             case MemoryRegion.Oam:
                 ppu.WriteOam16Aligned(address, value);
@@ -256,138 +286,35 @@ public sealed class GbaBus(GbaMemory memory, Ppu ppu)
             case MemoryRegion.Sram:
                 break; //Strange behavior
         }
-
-        /*
-        var region = ResolveRegion(address, 2, out var buffer);
-        switch (region)
-        {
-            case MemoryRegion.Bios or MemoryRegion.Rom or MemoryRegion.Unused:
-                return;
-            case MemoryRegion.Io:
-                memory.Io.WriteIo16Aligned(address, value);
-                break;
-            case MemoryRegion.Oam:
-                ppu.WriteOam16Aligned(address, value);
-                break;
-            default:
-                buffer[1] = (byte)(value >> 8);
-                buffer[0] = (byte)value;
-                break;
-        }
-        */
     }
 
-    public void Write8(uint address, byte value)
+    public unsafe void Write8(uint address, byte value)
     {
         var reg = Regions[address >> 24];
 
         switch (reg)
         {
             case MemoryRegion.Ewram:
-                memory.Ewram[address & 0x3ffff] = value;
+                *(memory.Ewram + (address & 0x3ffff)) = value;
                 break;
             case MemoryRegion.Iwram:
-                memory.Iwram[address & 0x7fff] = value;
+                *(memory.Iwram + (address & 0x7fff)) = value;
                 break;
             case MemoryRegion.Io:
                 memory.Io.WriteIo8(address, value);
                 break;
             case MemoryRegion.PaletteRam:
-                var offset = address & 0x3ffe; //mod by length -1 to halfword align
-                memory.PaletteRam[offset] = value;
-                memory.PaletteRam[offset + 1] = value;
+                var offset = address & 0x3feu; //mod by length -1 to halfword align
+                *(ushort*)(memory.PaletteRam + offset) = (ushort)(value * 0x101);
                 break;
             case MemoryRegion.Vram:
+                var offs = (address - 0x06000000) % 0x18000;
+                *(memory.Vram + offs) = value;
+                //memory.Vram[offs + 1] = value;
                 break; //strange behavior
             case MemoryRegion.Sram:
                 memory.Flash.Write8(address, value); //mess with later or other save types
                 break;
-        }
-
-        /*
-        var region = ResolveRegion(address, 1, out var buffer);
-        switch (region)
-        {
-            case MemoryRegion.Bios or MemoryRegion.Rom or MemoryRegion.Unused or MemoryRegion.Oam:
-                return;
-            case MemoryRegion.Io:
-                memory.Io.WriteIo8(address, value);
-                break;
-            case MemoryRegion.Sram:
-                memory.Flash.Write8(address, value);
-                break;
-            default:
-                buffer[0] = value;
-                break;
-        }
-        */
-    }
-
-    private unsafe MemoryRegion ResolveRegion(uint address, int size, out Span<byte> buffer)
-    {
-        int offset;
-        switch (address >> 24)
-        {
-            case 0x00:
-                offset = (int)(address & 0x3fffu); //fixed pow 2 size 16 KiB
-                //offset = (int)(address % (uint)memory.Bios.Length);
-                buffer = memory.Bios.AsSpan(offset, size);
-                return MemoryRegion.Bios;
-            case 0x02:
-                offset = (int)(address & 0x3ffffu); //fixed pow 2 size 256 KiB
-                //offset = (int)((address - 0x02000000) % (uint)memory.Ewram.Length);
-                buffer = memory.Ewram.AsSpan(offset, size);
-                return MemoryRegion.Ewram;
-            case 0x03:
-                offset = (int)(address & 0x7fffu); //fixed pow 2 size 16 KiB
-                //offset = (int)((address - 0x03000000) % (uint)memory.Iwram.Length);
-                buffer = memory.Iwram.AsSpan(offset, size);
-                return MemoryRegion.Iwram;
-            case 0x04:
-                buffer = [];
-                return MemoryRegion.Io;
-            case 0x05:
-                offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
-                //offset = (int)((address - 0x05000000) % (uint)memory.PaletteRam.Length);
-                buffer = memory.PaletteRam.AsSpan(offset, size);
-                return MemoryRegion.PaletteRam;
-            case 0x06:
-                offset = (int)((address - 0x06000000) % (uint)memory.Vram.Length);
-                buffer = memory.Vram.AsSpan(offset, size);
-                return MemoryRegion.Vram;
-            case 0x07:
-                //offset = (int)(address & 0x3ffu); //fixed pow 2 size 1 KiB
-                //buffer = memory.Oam.AsSpan(offset, size);
-                buffer = [];
-                return MemoryRegion.Oam;
-            case 0x08:
-            case 0x09:
-            case 0x0A:
-            case 0x0B:
-            case 0x0C:
-            case 0x0D:
-                
-                uint romLen = (uint)memory.RomLen;
-                uint roffset = address - 0x08000000u;
-                if (roffset >= romLen)
-                {
-                    roffset = romLen == 0 ? 0 : roffset % romLen;
-                }
-                offset = (int)roffset;
-                
-
-                //offset = memory.Rom.Length == 0 ? 0 : (int)((address - 0x08000000) % (uint)memory.Rom.Length);
-                //buffer = memory.Rom.AsSpan(offset, size);
-                buffer = new Span<byte>(memory.Rom + offset, size);
-                return MemoryRegion.Rom;
-            case 0x0E:
-                offset = (int)((address - 0x0E000000) % (uint)memory.Sram.Length);
-                buffer = memory.Sram.AsSpan(offset, size);
-                return MemoryRegion.Sram;
-            default:
-                buffer = [];
-                Console.WriteLine($"Address Accessed: 0x{address:x8}");
-                return MemoryRegion.Unused;
         }
     }
 

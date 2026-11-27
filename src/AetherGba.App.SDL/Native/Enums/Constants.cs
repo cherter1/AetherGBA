@@ -6,7 +6,7 @@ internal static class Constants
     internal const ulong SDL_WINDOW_RESIZABLE = 0x20;
     internal const ulong SDL_WINDOW_KEYBOARD_GRABBED = 0x100000;
     internal const uint SDL_PIXELFORMAT_ABGR1555 = 0x15731002u;
-    internal const int SDL_TEXTUREACCESS_STREAMING = 2;
+    internal const int SDL_TEXTUREACCESS_STREAMING = 1;
     internal const int SDL_SCALEMODE_PIXELART = 2;
     internal const int SDL_LOGICAL_PRESENTATION_LETTERBOX = 2;
     internal const uint SDL_EVENT_QUIT = 0x100;

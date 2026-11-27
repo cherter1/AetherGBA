@@ -37,7 +37,14 @@ public static class GbaInit
         if (romPath == null) return null;
 
         var saveFileName = Path.GetFileName(romPath).Replace(".gba", ".sav");
-        var saveFilePath = Path.Combine(AppContext.BaseDirectory, saveFileName);
-        return File.Exists(saveFilePath) ? saveFilePath : null;
+        var saveFilePath = Path.Combine(AppContext.BaseDirectory, "saves", saveFileName);
+
+        if (!File.Exists(saveFilePath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(saveFilePath)!);
+            File.Create(saveFilePath).Close();
+        }
+        return saveFilePath;
+        //return File.Exists(saveFilePath) ? saveFilePath : null;
     }
 }

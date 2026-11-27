@@ -38,7 +38,7 @@ public struct ScanlineSpriteInfo
         int priority,
         int xTiles,
         int xCoord,
-        int mode,
+        byte mode,
         bool hFlipOrDoubleSize,
         bool isAffine,
         short pa, short pb, short pc, short pd,
@@ -51,7 +51,7 @@ public struct ScanlineSpriteInfo
         XCoord = (short)((rawX << 23) >> 23); //sign-extend 9 bit for X wrapping i.e. 508 becomes -4
 
         Priority = (byte)priority;
-        Mode = (byte)mode;
+        Mode = mode;
         XTiles = (byte)xTiles;
         PaletteNumber = (byte)paletteNumber;
         IsAffine = isAffine;

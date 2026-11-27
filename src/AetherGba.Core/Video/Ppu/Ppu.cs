@@ -143,6 +143,8 @@ public sealed partial class Ppu
                 var backDropColor = *(ushort*)_memory.PaletteRam; //backdrop color is set by zero index of palette
                 FrameBuffer.FillScanline(scanLine, backDropColor);
             }
+
+            return;
         }
 
         switch (modeBits)
@@ -165,6 +167,42 @@ public sealed partial class Ppu
             case 5: //bitmap based mode
                 RenderMode5(scanLine);
                 break;
+        }
+    }
+
+    private static void DrawObjScanline(in ReadOnlySpan<byte> vram, ReadOnlySpan<ScanlineSpriteInfo> sprites,
+        ushort displayControl, Span<ObjPixel> objPixels)
+    {
+        objPixels.Clear();
+
+        // scanline visible sprites in front to back order
+        foreach (var sprite in sprites)
+        {
+            int width = sprite.XTiles << 3;
+            if (sprite is { IsAffine: true, DoubleSize: true })
+            {
+                width <<= 1;
+            }
+
+            int startX = Math.Max((short)0, sprite.XCoord);
+            int endX = Math.Min(objPixels.Length, sprite.XCoord + width);
+            int paletteBase = sprite.SinglePalette ? 0 : sprite.PaletteNumber << 4; // <<4 is mul 16
+            for (int x = startX; x < endX; x++)
+            {
+                ref var pixel = ref objPixels[x];
+                if (pixel.PaletteIndex != 0)
+                {
+                    continue;
+                }
+
+                int paletteEntry = sprite.IsAffine
+                    ? RenderAffineSprite(in vram, in sprite, x, 4, displayControl)
+                    : RenderRegularSprite(in vram, in sprite, x, 4);
+                if (paletteEntry != 0)
+                {
+                    pixel = new ObjPixel((byte)(paletteBase + paletteEntry), sprite.Priority, sprite.Mode);
+                }
+            }
         }
     }
 
@@ -216,7 +254,8 @@ public sealed partial class Ppu
         SortSpriteIndicesByPriority(visibleSprites);
 
         ReadOnlySpan<byte> vram = new(_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
+        Span<ObjPixel> objPixels = stackalloc ObjPixel[ScreenWidth];
+        DrawObjScanline(in vram, visibleSprites, displayControl, objPixels);
         for (var x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -262,7 +301,7 @@ public sealed partial class Ppu
                 }
 
                 var offset = paletteIndex << 1; // mul 2 because each palette entry is 2 bytes
-                var bgrColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
+                var bgrColor = *(ushort*)(_memory.PaletteRam + offset);
 
                 if (hiBgrColor == 0x8000)
                 {
@@ -279,40 +318,28 @@ public sealed partial class Ppu
             }
 
             int spriteMode = 0;
-            foreach (ref readonly var sprite in visibleSprites)
+            ref readonly var obj = ref objPixels[x];
+            if ((winMask & 0x10) != 0 && obj.PaletteIndex != 0 && obj.Priority <= loPriorityLine)
             {
-                if ((winMask & 0x10) == 0) //bit 4 of winMask is to display objects
-                {
-                    continue;
-                }
+                int offset = 0x200 + (obj.PaletteIndex << 1);
+                ushort objColor = *(ushort*)(_memory.PaletteRam + offset);
 
-                int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
-                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
-
-                if (objPaletteIndex == 0) continue;
-
-                objPaletteIndex += (16 * (sprite.SinglePalette ? 0 : sprite.PaletteNumber));
-                var offset = (objPaletteIndex << 1) + 0x200; //object palettes start offset 0x200 in paletteRam
-                var objPixelColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
-
-                if (sprite.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
+                if (obj.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
                 {
                     //make sprite pixel top and next top gets set to previous top
                     (loBgrColor, loColorSource) = (hiBgrColor, hiColorSource.ToBlendTargetTwoType());
-                    (hiBgrColor, hiColorSource) = (objPixelColor, BlendTargetOneType.Obj);
-                    spriteMode = sprite.Mode;
-                    break;
+                    (hiBgrColor, hiColorSource) = (objColor, BlendTargetOneType.Obj);
+                    spriteMode = obj.Mode;
                 }
-
-                loBgrColor = objPixelColor;
-                loColorSource = BlendTargetTwoType.Obj;
-                break;
+                else
+                {
+                    (loBgrColor, loColorSource) = (objColor, BlendTargetTwoType.Obj);
+                }
             }
 
             if (loBgrColor == 0x8000)
             {
-                loBgrColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
+                loBgrColor = *(ushort*)_memory.PaletteRam;
                 if (hiBgrColor == 0x8000)
                 {
                     hiBgrColor = loBgrColor;
@@ -630,7 +657,8 @@ public sealed partial class Ppu
         SortSpriteIndicesByPriority(visibleSprites);
 
         ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
+        Span<ObjPixel> objPixels = stackalloc ObjPixel[ScreenWidth];
+        DrawObjScanline(in vram, visibleSprites, displayControl, objPixels);
         for (int x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -687,7 +715,7 @@ public sealed partial class Ppu
                 if (!isSinglePalette && (paletteIndex & 0xf) == 0) continue;  //mod 16 in 4bpp mode to cover all palette transparency
 
                 var offset = paletteIndex << 1; // mul 2 bc each palette entry is 2 bytes
-                var bgrColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
+                var bgrColor = *(ushort*)(_memory.PaletteRam + offset);
 
                 if (hiBgrColor == 0x8000)
                 {
@@ -704,40 +732,28 @@ public sealed partial class Ppu
             }
 
             int spriteMode = 0;
-            foreach (ref readonly var sprite in visibleSprites)
+            ref readonly var obj = ref objPixels[x];
+            if ((winMask & 0x10) != 0 && obj.PaletteIndex != 0 && obj.Priority <= loPriorityLine)
             {
-                if ((winMask & 0x10) == 0) //bit 4 of winMask is to display objects
-                {
-                    continue;
-                }
+                int offset = 0x200 + (obj.PaletteIndex << 1);
+                ushort objColor = *(ushort*)(_memory.PaletteRam + offset);
 
-                int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
-                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
-
-                if (objPaletteIndex == 0) continue; //if transparent dont draw
-
-                objPaletteIndex += (16 * (sprite.SinglePalette ? 0 : sprite.PaletteNumber));
-                var offset = (objPaletteIndex << 1) + 0x200; //object palettes start offset 0x200 in paletteRam
-                var objPixelColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
-
-                if (sprite.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
+                if (obj.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
                 {
                     //make sprite pixel top and next top gets set to previous top
                     (loBgrColor, loColorSource) = (hiBgrColor, hiColorSource.ToBlendTargetTwoType());
-                    (hiBgrColor, hiColorSource) = (objPixelColor, BlendTargetOneType.Obj);
-                    spriteMode = sprite.Mode;
-                    break;
+                    (hiBgrColor, hiColorSource) = (objColor, BlendTargetOneType.Obj);
+                    spriteMode = obj.Mode;
                 }
-
-                loBgrColor = objPixelColor;
-                loColorSource = BlendTargetTwoType.Obj;
-                break;
+                else
+                {
+                    (loBgrColor, loColorSource) = (objColor, BlendTargetTwoType.Obj);
+                }
             }
 
             if (loBgrColor == 0x8000)
             {
-                loBgrColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
+                loBgrColor = *(ushort*)_memory.PaletteRam;
                 if (hiBgrColor == 0x8000)
                 {
                     hiBgrColor = loBgrColor;
@@ -859,7 +875,8 @@ public sealed partial class Ppu
         SortSpriteIndicesByPriority(visibleSprites);
 
         ReadOnlySpan<byte> vram = new (_memory.Vram, 0x18000); //Explicit slice with full Length of VRAM to help JIT eliminate bounds checks
-        ReadOnlySpan<byte> paletteRam = new (_memory.PaletteRam, 0x400);
+        Span<ObjPixel> objPixels = stackalloc ObjPixel[ScreenWidth];
+        DrawObjScanline(in vram, visibleSprites, displayControl, objPixels);
         for (int x = 0; x < ScreenWidth; x++)
         {
             var winMask = 0b111111;
@@ -907,7 +924,7 @@ public sealed partial class Ppu
                 }
 
                 var offset = paletteIndex << 1; // mul 2 bc each palette entry is 2 bytes
-                var bgrColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
+                var bgrColor = *(ushort*)(_memory.PaletteRam + offset);
 
                 if (hiBgrColor == 0x8000)
                 {
@@ -924,43 +941,28 @@ public sealed partial class Ppu
             }
 
             int spriteMode = 0;
-            foreach (ref readonly var sprite in visibleSprites)
+            ref readonly var obj = ref objPixels[x];
+            if ((winMask & 0x10) != 0 && obj.PaletteIndex != 0 && obj.Priority <= loPriorityLine)
             {
-                if ((winMask & 0x10) == 0) //bit 4 of winMask is to display objects
-                {
-                    continue;
-                }
+                int offset = 0x200 + (obj.PaletteIndex << 1);
+                ushort objColor = *(ushort*)(_memory.PaletteRam + offset);
 
-                int objPaletteIndex = sprite.IsAffine
-                    ? RenderAffineSprite(in vram, in sprite, x, loPriorityLine, displayControl)
-                    : RenderRegularSprite(in vram, in sprite, x, loPriorityLine);
-
-                if (objPaletteIndex == 0)
-                {
-                    continue;
-                }
-
-                objPaletteIndex += (16 * (sprite.SinglePalette ? 0 : sprite.PaletteNumber));
-                var offset = (objPaletteIndex << 1) + 0x200; //object palettes start offset 0x200 in paletteRam
-                var objPixelColor = (ushort)(paletteRam[offset] | (paletteRam[offset + 1] << 8));
-
-                if (sprite.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
+                if (obj.Priority <= hiPriorityLine) //if sprite has higher priority than current top pixel
                 {
                     //make sprite pixel top and next top gets set to previous top
                     (loBgrColor, loColorSource) = (hiBgrColor, hiColorSource.ToBlendTargetTwoType());
-                    (hiBgrColor, hiColorSource) = (objPixelColor, BlendTargetOneType.Obj);
-                    spriteMode = sprite.Mode;
-                    break;
+                    (hiBgrColor, hiColorSource) = (objColor, BlendTargetOneType.Obj);
+                    spriteMode = obj.Mode;
                 }
-
-                loBgrColor = objPixelColor;
-                loColorSource = BlendTargetTwoType.Obj;
-                break;
+                else
+                {
+                    (loBgrColor, loColorSource) = (objColor, BlendTargetTwoType.Obj);
+                }
             }
 
             if (loBgrColor == 0x8000)
             {
-                loBgrColor = (ushort)(paletteRam[0] | (paletteRam[1] << 8));
+                loBgrColor = *(ushort*)_memory.PaletteRam;
                 if (hiBgrColor == 0x8000)
                 {
                     hiBgrColor = loBgrColor;
@@ -1093,8 +1095,7 @@ public sealed partial class Ppu
             var currentYPixel = spriteYPos & 7; //mod 8
             if (sprite.VFlip)
             {
-                //currentYTile = sprite.YTiles - 1 - currentYTile; //maybe right
-                currentYTile = sprite.YTiles - currentYTile;
+                currentYTile = sprite.YTiles - 1 - currentYTile;
                 currentYPixel = 7 - currentYPixel;
             }
 

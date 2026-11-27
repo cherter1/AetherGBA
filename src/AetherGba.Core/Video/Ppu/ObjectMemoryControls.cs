@@ -9,6 +9,7 @@ public sealed partial class Ppu
     private SpriteInfo[] _spriteInfo = new SpriteInfo[128];
     private readonly unsafe byte* _oam = (byte*)NativeMemory.AllocZeroed(0x400); //can only write 16/32
 
+    #region Oam
     public unsafe uint ReadOam32Aligned(uint address)
     {
         var rawOffset = address & 0x3ff;
@@ -128,4 +129,8 @@ public sealed partial class Ppu
             case 3: affineParams.Pd = value; break;
         }
     }
+    #endregion
+    
+    #region Vram
+    #endregion
 }
